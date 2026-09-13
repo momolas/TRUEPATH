@@ -1,4 +1,4 @@
-# swift-ballistics
+# SwiftBallistics
 
 A Swift port of the [libballistics](https://github.com/grimwm/libballistics) library, designed for accurate and efficient ballistics simulation. This library provides tools to simulate projectile trajectories, accounting for various physical forces and environmental factors.
 
@@ -30,11 +30,11 @@ A Swift port of the [libballistics](https://github.com/grimwm/libballistics) lib
 
 ### Swift Package Manager (SPM)
 
-To include `swift-ballistics` in your project, add it as a dependency in your `Package.swift` file:
+To include `SwiftBallistics` in your project, add it as a dependency in your `Package.swift` file:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/raydowe/swift-ballistics.git", .upToNextMajor(from: "3.0.0"))
+    .package(url: "https://github.com/momolas/swift-ballistics.git", .upToNextMajor(from: "1.2.2"))
 ]
 ```
 
