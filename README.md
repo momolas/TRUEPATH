@@ -34,7 +34,7 @@ To include `SwiftBallistics` in your project, add it as a dependency in your `Pa
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/momolas/swift-ballistics.git", .upToNextMajor(from: "1.2.2"))
+    .package(url: "https://github.com/momolas/BallisticsKit.git", .upToNextMajor(from: "1.2.2"))
 ]
 ```
 

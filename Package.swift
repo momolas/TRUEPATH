@@ -4,11 +4,11 @@
 import PackageDescription
 
 let package = Package(
-    name: "SwiftBallistics",
+    name: "BallisticsKit",
     platforms: [.iOS(.v18), .macOS(.v15), .watchOS(.v11)],
     products: [
         .library(
-            name: "SwiftBallistics",
+            name: "BallisticsKit",
             targets: ["Ballistics"]
         ),
         .library(
