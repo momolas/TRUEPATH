@@ -7,7 +7,7 @@
 
 import Foundation
 import Testing
-@testable import Ballistics
+@testable import BallisticsKit
 
 @Test func calculatePBR() async throws {
     let result = PBR.solve(

@@ -7,7 +7,7 @@
 
 import Foundation
 import Testing
-@testable import Ballistics
+@testable import BallisticsKit
 
 @Test func dragFunctionG1vsG7() async throws {
     // Solve with G1 drag function

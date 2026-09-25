@@ -7,7 +7,7 @@
 
 import Foundation
 import Testing
-import Ballistics
+import BallisticsKit
 
 @Test func energyUnits() async throws {
     #expect(Measurement<UnitEnergy>(value: 1, unit: .footPounds).converted(to: .joules).value.isApproximatelyEqual(to: 1.35582, absoluteTolerance: 0.000001))

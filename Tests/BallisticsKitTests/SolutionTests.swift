@@ -7,7 +7,7 @@
 
 import Foundation
 import Testing
-import Ballistics
+import BallisticsKit
 
 @Test func simpleSolution() async throws {
 

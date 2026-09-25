@@ -7,7 +7,7 @@
 
 import Foundation
 import Testing
-@testable import Ballistics
+@testable import BallisticsKit
 
 @Test func projectilePropertiesCalculations() {
     // Standard .308 175gr Match projectile (diameter 0.308", length 1.24")

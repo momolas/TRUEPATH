@@ -7,7 +7,7 @@
 
 import Foundation
 import Testing
-import Ballistics
+import BallisticsKit
 
 @Test func angleUnits() async throws {
     #expect(Measurement<UnitAngle>(value: 1, unit: .milliradians).converted(to: .minutesOfAngle).value.isApproximatelyEqual(to: 3.43775, absoluteTolerance: 1e-5))

@@ -7,7 +7,7 @@
 
 import Foundation
 import Testing
-@testable import Ballistics
+@testable import BallisticsKit
 
 @Test func muzzleVelocityTruing() throws {
     // 1. Forward simulation with known true V0 = 2650 fps at 500 yards

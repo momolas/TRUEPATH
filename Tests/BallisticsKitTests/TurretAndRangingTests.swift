@@ -7,7 +7,7 @@
 
 import Foundation
 import Testing
-@testable import Ballistics
+@testable import BallisticsKit
 
 @Test func turretClickConversions() {
     // 2.5 MOA drop correction with 1/4 MOA clicks -> 10 clicks

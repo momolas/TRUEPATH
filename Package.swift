@@ -9,24 +9,21 @@ let package = Package(
     products: [
         .library(
             name: "BallisticsKit",
-            targets: ["Ballistics"]
-        ),
-        .library(
-            name: "Ballistics",
-            targets: ["Ballistics"]
+            targets: ["BallisticsKit"]
         )
     ],
     dependencies: [],
     targets: [
         .target(
-            name: "Ballistics",
+            name: "BallisticsKit",
             dependencies: []
         ),
         .testTarget(
-            name: "BallisticsTests",
+            name: "BallisticsKitTests",
             dependencies: [
-                "Ballistics"
+                "BallisticsKit"
             ]
         ),
-    ]
+    ],
+    swiftLanguageModes: [.v6]
 )

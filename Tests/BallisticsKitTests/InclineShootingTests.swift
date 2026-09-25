@@ -7,7 +7,7 @@
 
 import Foundation
 import Testing
-@testable import Ballistics
+@testable import BallisticsKit
 
 @Test func inclineShootingCalculations() {
     // 500m slant range at 30° incline -> 500 * cos(30°) = 500 * 0.866025 ≈ 433.01 meters

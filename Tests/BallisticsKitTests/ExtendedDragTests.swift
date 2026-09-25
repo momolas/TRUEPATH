@@ -7,7 +7,7 @@
 
 import Foundation
 import Testing
-import Ballistics
+import BallisticsKit
 
 @Test func testExtendedDragModels() async throws {
     let models: [DragFunction] = [.g1, .g2, .g5, .g6, .g7, .g8]

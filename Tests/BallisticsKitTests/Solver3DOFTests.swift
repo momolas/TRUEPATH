@@ -7,7 +7,7 @@
 
 import Testing
 import Foundation
-@testable import Ballistics
+@testable import BallisticsKit
 
 @Suite("Solver 3-DOF Tests")
 struct Solver3DOFTests {

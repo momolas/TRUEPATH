@@ -68,7 +68,7 @@ public struct Truing: Sendable, Equatable, Hashable {
         var vLow = 400.0
         var vHigh = 5000.0
 
-        for _ in 0..<24 {
+        for _ in 0..<20 {
             let vMid = (vLow + vHigh) / 2.0
             let solution = Ballistics.solve3DOF(
                 preferredDistanceUnit: .yards,
@@ -82,7 +82,8 @@ public struct Truing: Sendable, Equatable, Hashable {
                 windSpeed: Measurement(value: 0, unit: .milesPerHour),
                 windAngle: 0,
                 weight: weight,
-                distanceStep: distance
+                distanceStep: distance,
+                maxRange: distance + Measurement(value: 25, unit: .yards)
             )
 
             guard let point = solution.getPoint(at: distance) else {
@@ -146,7 +147,7 @@ public struct Truing: Sendable, Equatable, Hashable {
         var bcLow = 0.05
         var bcHigh = 1.50
 
-        for _ in 0..<24 {
+        for _ in 0..<20 {
             let bcMid = (bcLow + bcHigh) / 2.0
             let solution = Ballistics.solve3DOF(
                 preferredDistanceUnit: .yards,
@@ -160,7 +161,8 @@ public struct Truing: Sendable, Equatable, Hashable {
                 windSpeed: Measurement(value: 0, unit: .milesPerHour),
                 windAngle: 0,
                 weight: weight,
-                distanceStep: distance
+                distanceStep: distance,
+                maxRange: distance + Measurement(value: 25, unit: .yards)
             )
 
             guard let point = solution.getPoint(at: distance) else {

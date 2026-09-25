@@ -7,7 +7,7 @@
 
 import Foundation
 import Testing
-@testable import Ballistics
+@testable import BallisticsKit
 
 @Test func speedUnits() async throws {
     #expect(Measurement<UnitSpeed>(value: 3300, unit: .feetPerSecond).converted(to: .metersPerSecond).value.isApproximatelyEqual(to: 1005.84, absoluteTolerance: 0.01))

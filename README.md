@@ -1,6 +1,6 @@
-# SwiftBallistics
+# BallisticsKit (TRUEPATH)
 
-A Swift port of the [libballistics](https://github.com/grimwm/libballistics) library, designed for accurate and efficient ballistics simulation. This library provides tools to simulate projectile trajectories, accounting for various physical forces and environmental factors.
+A high-performance Swift 6 port and modern evolution of the `libballistics` library, designed for accurate and efficient ballistics simulation.
 
 ## Features
 
@@ -43,7 +43,7 @@ dependencies: [
 ### 1. Calculate Ballistic Trajectory (with Advanced Long-Range Options)
 
 ```swift
-import Ballistics
+import BallisticsKit
 
 // Generate a comprehensive ballistic solution
 let solution = Ballistics.solve3DOF(
@@ -196,3 +196,47 @@ if case .success(let pbr) = pbrResult {
     print("Max PBR: \(pbr.maxPBRYards) yards")
 }
 ```
+
+### 9. Monte Carlo Ballistic Dispersion (Apple Accelerate vDSP)
+
+Simulate shot group dispersion and calculate statistics (Mean Point of Impact, Extreme Spread, Standard Deviation, CEP 50% radius, R95) accelerated with Apple Accelerate `vDSP`:
+
+```swift
+let dispersion = MonteCarloDispersion(
+    muzzleVelocitySD: Measurement(value: 12, unit: .feetPerSecond),
+    windSpeedSD: Measurement(value: 2.0, unit: .milesPerHour),
+    shooterAngularSD: Measurement(value: 0.35, unit: .minutesOfAngle)
+)
+
+let result = MonteCarlo.simulate(
+    shotCount: 200,
+    targetDistance: Measurement(value: 600, unit: .yards),
+    dispersion: dispersion,
+    dragFunction: .g7,
+    dragCoefficient: 0.265,
+    nominalVelocity: Measurement(value: 2750, unit: .feetPerSecond),
+    sightHeight: Measurement(value: 1.5, unit: .inches),
+    zeroRange: Measurement(value: 100, unit: .yards)
+)
+
+print("CEP (50% radius): \(result.cep50)")
+print("R95 (95% radius): \(result.r95)")
+print("Extreme Spread Vertical: \(result.extremeSpreadVertical)")
+print("Extreme Spread Horizontal: \(result.extremeSpreadHorizontal)")
+```
+
+### 10. Vectorized Aerodynamic Drag Table Lookups (`vDSP_vlintD`)
+
+Interpolate whole arrays of Mach numbers in $O(1)$ SIMD instructions with Apple Accelerate:
+
+```swift
+let cdm = CustomDragModel(dataPoints: [
+    .init(mach: 0.5, cd: 0.15),
+    .init(mach: 1.0, cd: 0.42),
+    .init(mach: 2.0, cd: 0.30)
+])
+
+let machQueries = [0.7, 0.95, 1.1, 1.5]
+let batchCd = cdm.dragCoefficients(atMachArray: machQueries)
+```
+

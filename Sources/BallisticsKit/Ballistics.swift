@@ -71,7 +71,8 @@ public struct Ballistics: Sendable, Equatable, Hashable {
         bulletDiameter: Measurement<UnitLength>? = nil,
         bulletLength: Measurement<UnitLength>? = nil,
         latitude: Measurement<UnitAngle>? = nil,
-        azimuth: Measurement<UnitAngle>? = nil
+        azimuth: Measurement<UnitAngle>? = nil,
+        maxRange: Measurement<UnitLength>? = nil
     ) -> Ballistics {
         return Solver3DOF.solve(
             preferredDistanceUnit: preferredDistanceUnit,
@@ -91,7 +92,8 @@ public struct Ballistics: Sendable, Equatable, Hashable {
             bulletDiameter: bulletDiameter,
             bulletLength: bulletLength,
             latitude: latitude,
-            azimuth: azimuth
+            azimuth: azimuth,
+            maxRange: maxRange
         )
     }
 
@@ -115,7 +117,8 @@ public struct Ballistics: Sendable, Equatable, Hashable {
         bulletDiameter: Measurement<UnitLength>? = nil,
         bulletLength: Measurement<UnitLength>? = nil,
         latitude: Measurement<UnitAngle>? = nil,
-        azimuth: Measurement<UnitAngle>? = nil
+        azimuth: Measurement<UnitAngle>? = nil,
+        maxRange: Measurement<UnitLength>? = nil
     ) -> Ballistics {
         solve3DOF(
             preferredDistanceUnit: preferredDistanceUnit,
@@ -135,7 +138,8 @@ public struct Ballistics: Sendable, Equatable, Hashable {
             bulletDiameter: bulletDiameter,
             bulletLength: bulletLength,
             latitude: latitude,
-            azimuth: azimuth
+            azimuth: azimuth,
+            maxRange: maxRange
         )
     }
 

@@ -7,7 +7,7 @@
 
 import Foundation
 import Testing
-import Ballistics
+import BallisticsKit
 
 @Test func massUnits() async throws {
     #expect(Measurement<UnitMass>(value: 1, unit: .grains).converted(to: .kilograms).value.isApproximatelyEqual(to: 6.47989e-5, absoluteTolerance: 1e-10))

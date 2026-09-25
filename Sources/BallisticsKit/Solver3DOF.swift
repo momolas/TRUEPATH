@@ -58,7 +58,8 @@ public struct Solver3DOF: Sendable {
         bulletDiameter: Measurement<UnitLength>? = nil,
         bulletLength: Measurement<UnitLength>? = nil,
         latitude: Measurement<UnitAngle>? = nil,
-        azimuth: Measurement<UnitAngle>? = nil
+        azimuth: Measurement<UnitAngle>? = nil,
+        maxRange: Measurement<UnitLength>? = nil
     ) -> Ballistics {
 
         var ballistics = Ballistics(
@@ -68,7 +69,13 @@ public struct Solver3DOF: Sendable {
 
         let stepInPreferred = distanceStep.converted(to: preferredDistanceUnit)
         let stepFeet = stepInPreferred.converted(to: .feet).value
-        let maxFeet = Double(Constants.BALLISTICS_COMPUTATION_MAX_YARDS) * 3.0
+        let defaultMaxFeet = Double(Constants.BALLISTICS_COMPUTATION_MAX_YARDS) * 3.0
+        let maxFeet: Double
+        if let range = maxRange {
+            maxFeet = min(defaultMaxFeet, max(stepFeet, range.converted(to: .feet).value))
+        } else {
+            maxFeet = defaultMaxFeet
+        }
 
         let environmentDragCoefficient = atmosphere?.adjustCoefficient(dragCoefficient: dragCoefficient) ?? dragCoefficient
         let soundSpeedFPS = atmosphere?.speedOfSound.converted(to: .feetPerSecond).value ?? Drag.defaultSpeedOfSoundFPS

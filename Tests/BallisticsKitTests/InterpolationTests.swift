@@ -7,7 +7,7 @@
 
 import Foundation
 import Testing
-import Ballistics
+import BallisticsKit
 
 @Test func testContinuousInterpolation() async throws {
     let solution = Ballistics.solve3DOF(

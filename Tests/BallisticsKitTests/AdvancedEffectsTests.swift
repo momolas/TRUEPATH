@@ -7,7 +7,7 @@
 
 import Foundation
 import Testing
-@testable import Ballistics
+@testable import BallisticsKit
 
 @Test func spinDriftCalculation() {
     // 175gr .308 projectile (diameter 0.308", length 1.24", 1:10" twist)

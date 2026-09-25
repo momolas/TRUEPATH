@@ -7,7 +7,7 @@
 
 import Foundation
 import Testing
-@testable import Ballistics
+@testable import BallisticsKit
 
 @Test func dangerSpaceCalculation() throws {
     let solution = Ballistics.solve3DOF(

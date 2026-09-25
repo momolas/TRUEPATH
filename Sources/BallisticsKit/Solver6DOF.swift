@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import simd
 
 /// High-fidelity 6-DOF (6 Degrees of Freedom) rigid-body trajectory solver following STANAG 4355 / McCoy standards.
 ///
@@ -14,14 +15,64 @@ import Foundation
 public struct Solver6DOF: Sendable {
 
     public struct Derivatives: Sendable {
-        public var dx: Double
-        public var dy: Double
-        public var dz: Double
-        public var dvx: Double
-        public var dvy: Double
-        public var dvz: Double
+        public var velocity: simd_double3      // dx, dy, dz (ft/s)
+        public var acceleration: simd_double3  // dvx, dvy, dvz (ft/s^2)
         public var dp: Double
         public var droll: Double
+
+        // Backward-compatible scalar accessors
+        public var dx: Double {
+            get { velocity.x }
+            set { velocity.x = newValue }
+        }
+        public var dy: Double {
+            get { velocity.y }
+            set { velocity.y = newValue }
+        }
+        public var dz: Double {
+            get { velocity.z }
+            set { velocity.z = newValue }
+        }
+        public var dvx: Double {
+            get { acceleration.x }
+            set { acceleration.x = newValue }
+        }
+        public var dvy: Double {
+            get { acceleration.y }
+            set { acceleration.y = newValue }
+        }
+        public var dvz: Double {
+            get { acceleration.z }
+            set { acceleration.z = newValue }
+        }
+
+        public init(
+            dx: Double,
+            dy: Double,
+            dz: Double,
+            dvx: Double,
+            dvy: Double,
+            dvz: Double,
+            dp: Double,
+            droll: Double
+        ) {
+            self.velocity = simd_double3(dx, dy, dz)
+            self.acceleration = simd_double3(dvx, dvy, dvz)
+            self.dp = dp
+            self.droll = droll
+        }
+
+        public init(
+            velocity: simd_double3,
+            acceleration: simd_double3,
+            dp: Double,
+            droll: Double
+        ) {
+            self.velocity = velocity
+            self.acceleration = acceleration
+            self.dp = dp
+            self.droll = droll
+        }
     }
 
     /**
@@ -107,13 +158,12 @@ public struct Solver6DOF: Sendable {
         let ix = properties.axialInertia
         let iy = properties.transverseInertia
 
-        // Compute STANAG 4355 6-DOF differential rates
+        // Compute STANAG 4355 6-DOF differential rates (Accelerated with Apple SIMD)
         func computeDerivatives(s: State6DOF) -> (derivs: Derivatives, sg: Double, sd: Double, yawRepose: Double) {
             // Apparent velocity relative to wind: w = v - v_wind
-            let wx = s.vx + windHeadX
-            let wy = s.vy
-            let wz = s.vz - windCrossZ
-            let wMag = max(10.0, sqrt(wx * wx + wy * wy + wz * wz))
+            let windDelta = simd_double3(windHeadX, 0, -windCrossZ)
+            let wVec = s.velocity + windDelta
+            let wMag = max(10.0, simd_length(wVec))
 
             let mach = wMag / soundSpeedFPS
             let qDyn = 0.5 * airDensitySlugFt3 * wMag * wMag
@@ -137,50 +187,33 @@ public struct Solver6DOF: Sendable {
             // STANAG 4355 Equilibrium Yaw of Repose: alpha_e = (2 * Ix * p * g) / (rho * S * d * w^3 * CM_alpha)
             let yawReposeMag = (2.0 * ix * s.p * 32.17405) / max(1e-9, airDensitySlugFt3 * area * diamFeet * pow(wMag, 3) * cmA)
 
-            // Direction of equilibrium yaw (perpendicular to trajectory plane: g x v)
-            let yawDeltaX = 0.0
-            let yawDeltaY = 0.0
-            let yawDeltaZ = -yawReposeMag
-
             let alphaTotal = abs(yawReposeMag)
 
             // 1. Drag Force: F_drag = -q * S * CD(M, alpha) * (w / wMag)
             let cdTotal = cd0 + 1.5 * alphaTotal * alphaTotal
             let fDragMag = qDyn * area * cdTotal
-            let fDragX = -fDragMag * (wx / wMag)
-            let fDragY = -fDragMag * (wy / wMag)
-            let fDragZ = -fDragMag * (wz / wMag)
+            let fDrag = -fDragMag * (wVec / wMag)
 
             // 2. Lift Force (due to yaw of repose): F_lift = q * S * CL_alpha * delta
             let fLiftMag = qDyn * area * clA
-            let fLiftX = fLiftMag * yawDeltaX
-            let fLiftY = fLiftMag * yawDeltaY
-            let fLiftZ = fLiftMag * yawDeltaZ
+            let fLift = simd_double3(0, 0, -fLiftMag * yawReposeMag)
 
             // 3. Magnus Force: F_mag = 0.5 * rho * S * d * Cmag * (p x w)
             let fMagFactor = 0.5 * airDensitySlugFt3 * area * diamFeet * cmag * (s.p / wMag)
-            let fMagX = 0.0
-            let fMagY = -fMagFactor * wz
-            let fMagZ = fMagFactor * wy
+            let fMag = simd_double3(0, -fMagFactor * wVec.z, fMagFactor * wVec.y)
 
             // 4. Gravity Force
-            let fGravY = -32.17405 * mass
+            let fGrav = simd_double3(0, -32.17405 * mass, 0)
 
-            // Accelerations
-            let dvx = (fDragX + fLiftX + fMagX) / mass
-            let dvy = (fDragY + fLiftY + fGravY + fMagY) / mass
-            let dvz = (fDragZ + fLiftZ + fMagZ) / mass
+            // Accelerations: vector sum divided by mass
+            let accel = (fDrag + fLift + fMag + fGrav) / mass
 
             // 5. Spin Damping (Roll rate deceleration): dp/dt = (q * S * d^2 * Clp * (p * d / 2w)) / Ix
             let dp = (qDyn * area * diamFeet * diamFeet * clp * (s.p * diamFeet / (2.0 * wMag))) / max(1e-9, ix)
 
             let derivs = Derivatives(
-                dx: s.vx,
-                dy: s.vy,
-                dz: s.vz,
-                dvx: dvx,
-                dvy: dvy,
-                dvz: dvz,
+                velocity: s.velocity,
+                acceleration: accel,
                 dp: dp,
                 droll: s.p
             )
@@ -192,12 +225,8 @@ public struct Solver6DOF: Sendable {
             let (k1, _, _, _) = computeDerivatives(s: s)
 
             let s2 = State6DOF(
-                x: s.x + 0.5 * dt * k1.dx,
-                y: s.y + 0.5 * dt * k1.dy,
-                z: s.z + 0.5 * dt * k1.dz,
-                vx: s.vx + 0.5 * dt * k1.dvx,
-                vy: s.vy + 0.5 * dt * k1.dvy,
-                vz: s.vz + 0.5 * dt * k1.dvz,
+                position: s.position + 0.5 * dt * k1.velocity,
+                velocity: s.velocity + 0.5 * dt * k1.acceleration,
                 pitch: s.pitch,
                 yaw: s.yaw,
                 roll: s.roll + 0.5 * dt * k1.droll,
@@ -208,12 +237,8 @@ public struct Solver6DOF: Sendable {
             let (k2, _, _, _) = computeDerivatives(s: s2)
 
             let s3 = State6DOF(
-                x: s.x + 0.5 * dt * k2.dx,
-                y: s.y + 0.5 * dt * k2.dy,
-                z: s.z + 0.5 * dt * k2.dz,
-                vx: s.vx + 0.5 * dt * k2.dvx,
-                vy: s.vy + 0.5 * dt * k2.dvy,
-                vz: s.vz + 0.5 * dt * k2.dvz,
+                position: s.position + 0.5 * dt * k2.velocity,
+                velocity: s.velocity + 0.5 * dt * k2.acceleration,
                 pitch: s.pitch,
                 yaw: s.yaw,
                 roll: s.roll + 0.5 * dt * k2.droll,
@@ -224,12 +249,8 @@ public struct Solver6DOF: Sendable {
             let (k3, _, _, _) = computeDerivatives(s: s3)
 
             let s4 = State6DOF(
-                x: s.x + dt * k3.dx,
-                y: s.y + dt * k3.dy,
-                z: s.z + dt * k3.dz,
-                vx: s.vx + dt * k3.dvx,
-                vy: s.vy + dt * k3.dvy,
-                vz: s.vz + dt * k3.dvz,
+                position: s.position + dt * k3.velocity,
+                velocity: s.velocity + dt * k3.acceleration,
                 pitch: s.pitch,
                 yaw: s.yaw,
                 roll: s.roll + dt * k3.droll,
@@ -239,17 +260,14 @@ public struct Solver6DOF: Sendable {
             )
             let (k4, _, _, _) = computeDerivatives(s: s4)
 
+            let dt6 = dt / 6.0
             return State6DOF(
-                x: s.x + (dt / 6.0) * (k1.dx + 2.0 * k2.dx + 2.0 * k3.dx + k4.dx),
-                y: s.y + (dt / 6.0) * (k1.dy + 2.0 * k2.dy + 2.0 * k3.dy + k4.dy),
-                z: s.z + (dt / 6.0) * (k1.dz + 2.0 * k2.dz + 2.0 * k3.dz + k4.dz),
-                vx: s.vx + (dt / 6.0) * (k1.dvx + 2.0 * k2.dvx + 2.0 * k3.dvx + k4.dvx),
-                vy: s.vy + (dt / 6.0) * (k1.dvy + 2.0 * k2.dvy + 2.0 * k3.dvy + k4.dvy),
-                vz: s.vz + (dt / 6.0) * (k1.dvz + 2.0 * k2.dvz + 2.0 * k3.dvz + k4.dvz),
+                position: s.position + dt6 * (k1.velocity + 2.0 * k2.velocity + 2.0 * k3.velocity + k4.velocity),
+                velocity: s.velocity + dt6 * (k1.acceleration + 2.0 * k2.acceleration + 2.0 * k3.acceleration + k4.acceleration),
                 pitch: s.pitch,
                 yaw: s.yaw,
-                roll: s.roll + (dt / 6.0) * (k1.droll + 2.0 * k2.droll + 2.0 * k3.droll + k4.droll),
-                p: s.p + (dt / 6.0) * (k1.dp + 2.0 * k2.dp + 2.0 * k3.dp + k4.dp),
+                roll: s.roll + dt6 * (k1.droll + 2.0 * k2.droll + 2.0 * k3.droll + k4.droll),
+                p: s.p + dt6 * (k1.dp + 2.0 * k2.dp + 2.0 * k3.dp + k4.dp),
                 q: s.q,
                 r: s.r
             )
