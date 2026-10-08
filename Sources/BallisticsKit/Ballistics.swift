@@ -491,7 +491,106 @@ public struct Ballistics: Sendable, Equatable, Hashable {
     public func dopeTable(
         speedOfSound: Measurement<UnitSpeed> = Measurement(value: 1116.45, unit: .feetPerSecond)
     ) -> [DOPERow] {
-        distances.map { $0.dopeRow(speedOfSound: speedOfSound) }
+        guard !distances.isEmpty else { return [] }
+
+        let count = distances.count
+        let soundFPS = max(100.0, speedOfSound.converted(to: .feetPerSecond).value)
+
+        #if canImport(Accelerate)
+        var rangeFeet = [Double](repeating: 0, count: count)
+        var dropFeet = [Double](repeating: 0, count: count)
+        var windFeet = [Double](repeating: 0, count: count)
+        var vFPS = [Double](repeating: 0, count: count)
+
+        for i in 0..<count {
+            let p = distances[i]
+            rangeFeet[i] = max(1e-9, p.range.converted(to: .feet).value)
+            dropFeet[i] = p.totalDrop.converted(to: .feet).value
+            windFeet[i] = p.totalWindage.converted(to: .feet).value
+            vFPS[i] = p.velocity.converted(to: .feetPerSecond).value
+        }
+
+        var slopeDrop = [Double](repeating: 0, count: count)
+        var slopeWind = [Double](repeating: 0, count: count)
+
+        // slope = value / range
+        vDSP_vdivD(rangeFeet, 1, dropFeet, 1, &slopeDrop, 1, vDSP_Length(count))
+        vDSP_vdivD(rangeFeet, 1, windFeet, 1, &slopeWind, 1, vDSP_Length(count))
+
+        // Vectorized arctangent: theta = atan(slope)
+        var nInt = Int32(count)
+        var dropRad = [Double](repeating: 0, count: count)
+        var windRad = [Double](repeating: 0, count: count)
+        vvatan(&dropRad, slopeDrop, &nInt)
+        vvatan(&windRad, slopeWind, &nInt)
+
+        // Conversions to MOA and MRAD
+        var moaDropScale = -10800.0 / Double.pi
+        var moaWindScale = 10800.0 / Double.pi
+        var mradDropScale = -1000.0
+        var mradWindScale = 1000.0
+        var invSound = 1.0 / soundFPS
+
+        var elevMOAs = [Double](repeating: 0, count: count)
+        var windMOAs = [Double](repeating: 0, count: count)
+        var elevMRADs = [Double](repeating: 0, count: count)
+        var windMRADs = [Double](repeating: 0, count: count)
+        var machs = [Double](repeating: 0, count: count)
+
+        vDSP_vsmulD(dropRad, 1, &moaDropScale, &elevMOAs, 1, vDSP_Length(count))
+        vDSP_vsmulD(windRad, 1, &moaWindScale, &windMOAs, 1, vDSP_Length(count))
+        vDSP_vsmulD(dropRad, 1, &mradDropScale, &elevMRADs, 1, vDSP_Length(count))
+        vDSP_vsmulD(windRad, 1, &mradWindScale, &windMRADs, 1, vDSP_Length(count))
+        vDSP_vsmulD(vFPS, 1, &invSound, &machs, 1, vDSP_Length(count))
+
+        var rows = [DOPERow]()
+        rows.reserveCapacity(count)
+
+        for i in 0..<count {
+            let p = distances[i]
+            let m = machs[i]
+            let eMOA = elevMOAs[i]
+            let wMOA = windMOAs[i]
+            let eMRAD = elevMRADs[i]
+            let wMRAD = windMRADs[i]
+
+            let clicksPointOneMRAD = Int((eMRAD * 10.0).rounded())
+            let clicksQuarterMOA = Int((eMOA * 4.0).rounded())
+            let clicksEighthMOA = Int((eMOA * 8.0).rounded())
+
+            let wClicksPointOneMRAD = Int((wMRAD * 10.0).rounded())
+            let wClicksQuarterMOA = Int((wMOA * 4.0).rounded())
+            let wClicksEighthMOA = Int((wMOA * 8.0).rounded())
+
+            rows.append(
+                DOPERow(
+                    range: p.range,
+                    travelTime: p.travelTime,
+                    velocity: p.velocity,
+                    energy: p.energy,
+                    drop: p.totalDrop,
+                    elevationMRAD: eMRAD,
+                    elevationClicksPointOneMRAD: clicksPointOneMRAD,
+                    elevationMOA: eMOA,
+                    elevationClicksQuarterMOA: clicksQuarterMOA,
+                    elevationClicksEighthMOA: clicksEighthMOA,
+                    totalWindage: p.totalWindage,
+                    windageMRAD: wMRAD,
+                    windageClicksPointOneMRAD: wClicksPointOneMRAD,
+                    windageMOA: wMOA,
+                    windageClicksQuarterMOA: wClicksQuarterMOA,
+                    windageClicksEighthMOA: wClicksEighthMOA,
+                    mach: m,
+                    isSupersonic: m > 1.2,
+                    isTransonic: m >= 0.8 && m <= 1.2,
+                    isSubsonic: m < 0.8
+                )
+            )
+        }
+        return rows
+        #else
+        return distances.map { $0.dopeRow(speedOfSound: speedOfSound) }
+        #endif
     }
 
     /**

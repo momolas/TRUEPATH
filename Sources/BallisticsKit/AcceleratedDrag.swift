@@ -77,17 +77,19 @@ public struct AcceleratedDragTable: Sendable, Equatable {
         var indices = [Double](repeating: 0, count: count)
         let maxIndex = Double(grid.count - 1)
         let invStep = 1.0 / step
-
-        // Calculate fractional table indices
-        for i in 0..<count {
-            let m = machArray[i]
-            let rawIdx = (m - minMach) * invStep
-            indices[i] = min(maxIndex, max(0.0, rawIdx))
-        }
-
         var results = [Double](repeating: 0, count: count)
 
         #if canImport(Accelerate)
+        var shift = -minMach
+        var scale = invStep
+        var lowLimit = 0.0
+        var highLimit = maxIndex
+
+        // Vectorized: indices = clamp((machArray - minMach) * invStep, 0.0, maxIndex)
+        vDSP_vsaddD(machArray, 1, &shift, &indices, 1, vDSP_Length(count))
+        vDSP_vsmulD(indices, 1, &scale, &indices, 1, vDSP_Length(count))
+        vDSP_vclipD(indices, 1, &lowLimit, &highLimit, &indices, 1, vDSP_Length(count))
+
         vDSP_vlintD(
             grid,
             indices,
@@ -99,6 +101,9 @@ public struct AcceleratedDragTable: Sendable, Equatable {
         )
         #else
         for i in 0..<count {
+            let m = machArray[i]
+            let rawIdx = (m - minMach) * invStep
+            indices[i] = min(maxIndex, max(0.0, rawIdx))
             let idx = indices[i]
             let base = Int(idx)
             if base >= grid.count - 1 {

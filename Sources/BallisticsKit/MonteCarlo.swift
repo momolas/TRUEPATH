@@ -390,16 +390,16 @@ public struct MonteCarlo: Sendable {
 
         var xDevs = [Double]()
         var yDevs = [Double]()
-        var radials = [Double]()
         var vels = [Double]()
         var energ = [Double]()
+        var flightTimes = [Double]()
         var shotList = [MonteCarloShot]()
 
         xDevs.reserveCapacity(count)
         yDevs.reserveCapacity(count)
-        radials.reserveCapacity(count)
         vels.reserveCapacity(count)
         energ.reserveCapacity(count)
+        flightTimes.reserveCapacity(count)
         shotList.reserveCapacity(count)
 
         for _ in 0..<count {
@@ -433,7 +433,6 @@ public struct MonteCarlo: Sendable {
 
                 let yTotalDev = (yPhysical - baselineDropInches) + (shotAngularY * targetDistanceInches)
                 let xTotalDev = (xPhysical - baselineWindageInches) + (shotAngularX * targetDistanceInches)
-                let rDist = sqrt(xTotalDev * xTotalDev + yTotalDev * yTotalDev)
 
                 let vEnd = p.velocity.converted(to: .feetPerSecond).value
                 let eEnd = p.energy.converted(to: .footPounds).value
@@ -441,21 +440,34 @@ public struct MonteCarlo: Sendable {
 
                 xDevs.append(xTotalDev)
                 yDevs.append(yTotalDev)
-                radials.append(rDist)
                 vels.append(vEnd)
                 energ.append(eEnd)
-
-                shotList.append(
-                    MonteCarloShot(
-                        horizontalDeviation: Measurement(value: xTotalDev, unit: .inches),
-                        verticalDeviation: Measurement(value: yTotalDev, unit: .inches),
-                        radialDistance: Measurement(value: rDist, unit: .inches),
-                        terminalVelocity: Measurement(value: vEnd, unit: .feetPerSecond),
-                        terminalEnergy: Measurement(value: eEnd, unit: .footPounds),
-                        timeOfFlight: Measurement(value: tEnd, unit: .seconds)
-                    )
-                )
+                flightTimes.append(tEnd)
             }
+        }
+
+        let actualCount = xDevs.count
+        var radials = [Double](repeating: 0, count: actualCount)
+
+        #if canImport(Accelerate)
+        vDSP_vdistD(xDevs, 1, yDevs, 1, &radials, 1, vDSP_Length(actualCount))
+        #else
+        for i in 0..<actualCount {
+            radials[i] = sqrt(xDevs[i] * xDevs[i] + yDevs[i] * yDevs[i])
+        }
+        #endif
+
+        for i in 0..<actualCount {
+            shotList.append(
+                MonteCarloShot(
+                    horizontalDeviation: Measurement(value: xDevs[i], unit: .inches),
+                    verticalDeviation: Measurement(value: yDevs[i], unit: .inches),
+                    radialDistance: Measurement(value: radials[i], unit: .inches),
+                    terminalVelocity: Measurement(value: vels[i], unit: .feetPerSecond),
+                    terminalEnergy: Measurement(value: energ[i], unit: .footPounds),
+                    timeOfFlight: Measurement(value: flightTimes[i], unit: .seconds)
+                )
+            )
         }
 
         return BatchOutput(
