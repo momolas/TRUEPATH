@@ -451,6 +451,8 @@ public struct Ballistics: Sendable, Equatable, Hashable {
         return Solver6DOF.solve(
             properties: properties,
             coefficients: aeroCoeffs,
+            dragFunction: dragFunction,
+            dragCoefficient: dragCoefficient,
             initialVelocity: initialVelocity,
             sightHeight: sightHeight,
             zeroRange: zeroRange,
@@ -463,7 +465,9 @@ public struct Ballistics: Sendable, Equatable, Hashable {
             latitude: latitude,
             azimuth: azimuth,
             distanceStep: distanceStep,
-            preferredDistanceUnit: preferredDistanceUnit
+            preferredDistanceUnit: preferredDistanceUnit,
+            tolerance: tolerance,
+            maxRange: maxRange
         )
     }
 }

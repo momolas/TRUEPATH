@@ -23,6 +23,13 @@ public struct Atmosphere: Sendable, Equatable, Hashable {
         return Measurement(value: speedFPS, unit: .feetPerSecond)
     }
 
+    /// Ambient air density in slugs per cubic foot, adjusted for altitude, temperature, pressure and humidity.
+    public var airDensitySlugFt3: Double {
+        let seaLevelDensity = 0.0023769 // slug / ft^3 at standard ICAO sea level
+        let factor = adjustCoefficient(dragCoefficient: 1.0)
+        return max(0.0001, seaLevelDensity / max(1e-6, factor))
+    }
+
     public init(
         altitude: Measurement<UnitLength> = Measurement<UnitLength>(value: 0, unit: .meters),
         pressure: Measurement<UnitPressure> = Measurement<UnitPressure>(value: 29.92, unit: .inchesOfMercury),

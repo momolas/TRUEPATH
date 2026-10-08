@@ -29,11 +29,11 @@ public struct IntegratorTolerance: Sendable, Equatable, Hashable {
     public var safetyFactor: Double
 
     public init(
-        absoluteTolerance: Double = 1e-6,
-        relativeTolerance: Double = 1e-5,
-        minStep: Double = 1e-6,
-        maxStep: Double = 0.01,
-        initialStep: Double = 0.001,
+        absoluteTolerance: Double = 1e-4,
+        relativeTolerance: Double = 1e-4,
+        minStep: Double = 1e-5,
+        maxStep: Double = 0.02,
+        initialStep: Double = 0.002,
         safetyFactor: Double = 0.90
     ) {
         self.absoluteTolerance = absoluteTolerance

@@ -8,7 +8,7 @@
 import Foundation
 import simd
 
-/// NATO STANAG 4355 / AOP-4355 Modified Point Mass (4-DOF) trajectory solver.
+/// Unified NATO STANAG 4355 / AOP-4355 Modified Point Mass (4-DOF) trajectory solver.
 ///
 /// Implements 3D translational dynamics coupled with axial spin decay (4th degree of freedom),
 /// equilibrium yaw of repose (\alpha_e), aerodynamic lift, Magnus force, vertical/horizontal Coriolis,
@@ -20,7 +20,7 @@ public struct Solver4DOF: Sendable {
      */
     public static func solve(
         preferredDistanceUnit: UnitLength = .yards,
-        dragFunction: DragFunction = .g7,
+        dragFunction: DragFunction = .g1,
         dragCoefficient: Double,
         initialVelocity: Measurement<UnitSpeed>,
         sightHeight: Measurement<UnitLength>,
@@ -58,16 +58,16 @@ public struct Solver4DOF: Sendable {
             dragCoefficient: dragCoefficient
         )
 
-        let effTwist = twist ?? Measurement(value: 11.0, unit: .inches)
-
         return solve(
             properties: properties,
             coefficients: coefficients,
+            dragFunction: dragFunction,
+            dragCoefficient: dragCoefficient,
             initialVelocity: initialVelocity,
             sightHeight: sightHeight,
             zeroRange: zeroRange,
             shootingAngle: shootingAngle,
-            twist: effTwist,
+            twist: twist,
             twistDirection: twistDirection,
             atmosphere: atmosphere,
             windSpeed: windSpeed,
@@ -86,12 +86,14 @@ public struct Solver4DOF: Sendable {
      */
     public static func solve(
         properties: ProjectileProperties,
-        coefficients: AerodynamicCoefficients,
+        coefficients: AerodynamicCoefficients? = nil,
+        dragFunction: DragFunction = .g7,
+        dragCoefficient: Double = 0.500,
         initialVelocity: Measurement<UnitSpeed>,
         sightHeight: Measurement<UnitLength>,
         zeroRange: Measurement<UnitLength>,
         shootingAngle: Measurement<UnitAngle> = Measurement(value: 0, unit: .degrees),
-        twist: Measurement<UnitLength>,
+        twist: Measurement<UnitLength>? = nil,
         twistDirection: TwistDirection = .right,
         atmosphere: Atmosphere? = nil,
         windSpeed: Measurement<UnitSpeed> = Measurement(value: 0, unit: .milesPerHour),
@@ -120,12 +122,12 @@ public struct Solver4DOF: Sendable {
         }
 
         let v0FPS = initialVelocity.converted(to: .feetPerSecond).value
-        let twistInches = twist.converted(to: .inches).value
         let sightInches = sightHeight.converted(to: .inches).value
         let initialYFeet = -sightInches / 12.0
 
+        let envDragCoeff = atmosphere?.adjustCoefficient(dragCoefficient: dragCoefficient) ?? dragCoefficient
         let soundSpeedFPS = atmosphere?.speedOfSound.converted(to: .feetPerSecond).value ?? Drag.defaultSpeedOfSoundFPS
-        let airDensitySlugFt3 = 0.0023769 // Standard sea level air density
+        let localAirDensity = atmosphere?.airDensitySlugFt3 ?? 0.0023769
 
         // Wind components (in ft/s)
         let windFPS = windSpeed.converted(to: .feetPerSecond).value
@@ -133,14 +135,20 @@ public struct Solver4DOF: Sendable {
         let windHeadX = windFPS * cos(windRad)
         let windCrossZ = windFPS * sin(windRad)
 
-        // Initial spin rate p0 = (2 * pi * V0) / (twist_in_feet) * twist_sign
-        let twistFeet = max(0.1, twistInches / 12.0)
-        let initialP = (2.0 * Double.pi * v0FPS / twistFeet) * twistDirection.sign
+        // Initial spin rate p0 = (2 * pi * V0) / (twist_in_feet) * twist_sign (if rifled twist provided)
+        let initialP: Double
+        if let t = twist {
+            let twistInches = t.converted(to: .inches).value
+            let twistFeet = max(0.1, twistInches / 12.0)
+            initialP = (2.0 * Double.pi * v0FPS / twistFeet) * twistDirection.sign
+        } else {
+            initialP = 0.0
+        }
 
-        // Zero angle elevation estimate
+        // Zero angle elevation calculation
         let zeroAngleDeg = Angle.zeroAngle(
-            dragFunction: .g7,
-            dragCoefficient: 0.500,
+            dragFunction: dragFunction,
+            dragCoefficient: envDragCoeff,
             initialVelocity: initialVelocity,
             sightHeight: sightHeight,
             zeroRange: zeroRange,
@@ -168,6 +176,12 @@ public struct Solver4DOF: Sendable {
         let ix = properties.axialInertia
         let iy = properties.transverseInertia
 
+        let aeroCoeffs = coefficients ?? AerodynamicCoefficients.synthesize(
+            properties: properties,
+            dragFunction: dragFunction,
+            dragCoefficient: dragCoefficient
+        )
+
         // Earth angular velocity vector in firing coordinate frame
         let omegaEarth: simd_double3 = {
             guard let lat = latitude, let az = azimuth else { return .zero }
@@ -188,44 +202,69 @@ public struct Solver4DOF: Sendable {
             let wMag = max(10.0, simd_length(wVec))
 
             let mach = wMag / soundSpeedFPS
-            let qDyn = 0.5 * airDensitySlugFt3 * wMag * wMag
+            let qDyn = 0.5 * localAirDensity * wMag * wMag
 
             // Aerodynamic derivatives at current Mach
-            let cd0 = coefficients.cd0(mach)
-            let clA = coefficients.clAlpha(mach)
-            let cmA = coefficients.cmAlpha(mach)
-            let clp = coefficients.clp(mach)
-            let cmag = coefficients.cMag(mach)
+            let clA = aeroCoeffs.clAlpha(mach)
+            let cmA = aeroCoeffs.cmAlpha(mach)
+            let clp = aeroCoeffs.clp(mach)
+            let cmag = aeroCoeffs.cMag(mach)
 
             // Overturning moment factor
             let mOverturnPerRad = qDyn * area * diamFeet * cmA
 
             // Gyroscopic stability Sg
-            let sg = (ix * ix * s.p * s.p) / max(1e-9, 4.0 * iy * mOverturnPerRad)
+            let sg: Double
+            if abs(s.p) > 1.0 {
+                sg = (ix * ix * s.p * s.p) / max(1e-9, 4.0 * iy * mOverturnPerRad)
+            } else {
+                sg = 1.5
+            }
 
             // Dynamic stability Sd
             let sd = max(0.01, min(2.0, 1.0 + 0.1 * (sg - 1.5)))
 
             // STANAG 4355 Equilibrium Yaw of Repose: alpha_e = (2 * Ix * p * g) / (rho * S * d * w^3 * CM_alpha)
-            let yawReposeMag = (2.0 * ix * s.p * 32.17405) / max(1e-9, airDensitySlugFt3 * area * diamFeet * pow(wMag, 3) * cmA)
+            let yawReposeMag: Double
+            if abs(s.p) > 1.0 {
+                yawReposeMag = (2.0 * ix * s.p * 32.17405) / max(1e-9, localAirDensity * area * diamFeet * pow(wMag, 3) * cmA)
+            } else {
+                yawReposeMag = 0.0
+            }
 
             let alphaTotal = abs(yawReposeMag)
 
-            // 1. Drag Force: F_drag = -q * S * CD(M, alpha) * (w / wMag)
-            let cdTotal = cd0 + 1.5 * alphaTotal * alphaTotal
-            let fDragMag = qDyn * area * cdTotal
-            let fDrag = -fDragMag * (wVec / wMag)
+            // 1. Drag Deceleration: Standard drag retardation scaled by yaw of repose
+            let aDrag0 = Drag.retard(
+                dragFunction: dragFunction,
+                dragCoefficient: envDragCoeff,
+                projectileVelocity: wMag,
+                speedOfSoundFPS: soundSpeedFPS
+            )
+            let cdYawFactor = 1.0 + 1.5 * alphaTotal * alphaTotal
+            let aDrag = -(aDrag0 * cdYawFactor) * (wVec / wMag)
 
-            // 2. Lift Force (due to yaw of repose): F_lift = q * S * CL_alpha * delta
-            let fLiftMag = qDyn * area * clA
-            let fLift = simd_double3(0, 0, -fLiftMag * yawReposeMag)
+            // 2. Lift Acceleration (yaw of repose / spin drift)
+            let aLiftZ: Double
+            if abs(s.p) > 1.0 {
+                let liftFactor = (clA / max(1e-6, cmA)) * (ix / max(1e-9, mass * diamFeet)) * (s.p * 32.17405 / max(10.0, wMag))
+                aLiftZ = liftFactor
+            } else {
+                aLiftZ = 0.0
+            }
+            let aLift = simd_double3(0, 0, aLiftZ)
 
-            // 3. Magnus Force: F_mag = 0.5 * rho * S * d * Cmag * (p x w)
-            let fMagFactor = 0.5 * airDensitySlugFt3 * area * diamFeet * cmag * (s.p / wMag)
-            let fMag = simd_double3(0, -fMagFactor * wVec.z, fMagFactor * wVec.y)
+            // 3. Magnus Acceleration
+            let aMag: simd_double3
+            if abs(s.p) > 1.0 {
+                let fMagFactor = 0.5 * (localAirDensity * area * diamFeet / mass) * cmag * (s.p / wMag)
+                aMag = simd_double3(0, -fMagFactor * wVec.z, fMagFactor * wVec.y)
+            } else {
+                aMag = .zero
+            }
 
             // 4. Gravity Force
-            let fGrav = simd_double3(0, -32.17405 * mass, 0)
+            let aGrav = simd_double3(0, -32.17405, 0)
 
             // 5. Coriolis Acceleration: a_coriolis = -2 * (omega x v)
             let aCoriolis: simd_double3
@@ -236,10 +275,15 @@ public struct Solver4DOF: Sendable {
             }
 
             // Total Linear Acceleration
-            let accel = (fDrag + fLift + fMag + fGrav) / mass + aCoriolis
+            let accel = aDrag + aLift + aMag + aGrav + aCoriolis
 
             // 6. Spin Damping (Roll rate deceleration dp/dt)
-            let dp = (qDyn * area * diamFeet * diamFeet * clp * (s.p * diamFeet / (2.0 * wMag))) / max(1e-9, ix)
+            let dp: Double
+            if abs(s.p) > 1.0 {
+                dp = -(qDyn * area * diamFeet * diamFeet * abs(clp) * (s.p * diamFeet / (2.0 * wMag))) / max(1e-9, ix)
+            } else {
+                dp = 0.0
+            }
 
             let derivs = DormandPrince54.Derivatives4DOF(
                 velocity: s.velocity,
@@ -263,10 +307,33 @@ public struct Solver4DOF: Sendable {
             let moaWindage = Math.radToMOA(atan(s.position.z / xFeet))
 
             let vTotal = s.totalSpeedFPS
-            let ftlbs = mass * pow(vTotal, 2) / 2.0
+            let weightGrains = properties.weight.converted(to: .grains).value
+            let ftlbs = weightGrains * pow(vTotal, 2) / (2.0 * 32.163 * 7000.0)
 
             let rangeM = Measurement(value: Double(sampleIndex) * stepInPreferred.value, unit: preferredDistanceUnit)
             let duration = Measurement(value: s.time, unit: UnitDuration.seconds)
+
+            let hasSpin = abs(s.p) > 1.0
+
+            let spinDriftMeasurement: Measurement<UnitLength>? = {
+                guard hasSpin else { return nil }
+                if properties.weight.value > 0 && properties.diameter.value > 0 && properties.length.value > 0, let t = twist {
+                    let sgVal = SpinDrift.stabilityFactor(
+                        weight: properties.weight,
+                        diameter: properties.diameter,
+                        length: properties.length,
+                        twist: t,
+                        muzzleVelocity: initialVelocity
+                    )
+                    return SpinDrift.deflection(timeOfFlight: duration, stabilityFactor: sgVal, twistDirection: twistDirection)
+                }
+                return SpinDrift.deflection(timeOfFlight: duration, stabilityFactor: sg, twistDirection: twistDirection)
+            }()
+
+            let coriolisResult: (horizontal: Measurement<UnitLength>, vertical: Measurement<UnitLength>)? = {
+                guard let lat = latitude, let az = azimuth else { return nil }
+                return Coriolis.deflection(latitude: lat, azimuth: az, range: rangeM, timeOfFlight: duration)
+            }()
 
             let point = Point(
                 range: rangeM,
@@ -279,13 +346,13 @@ public struct Solver4DOF: Sendable {
                 velocityX: Measurement(value: s.velocity.x, unit: .feetPerSecond),
                 velocityY: Measurement(value: s.velocity.y, unit: .feetPerSecond),
                 energy: Measurement(value: ftlbs, unit: .footPounds),
-                spinDrift: Measurement(value: abs(yawRepose) * xFeet * 12.0 * 0.05, unit: .inches),
-                coriolisHorizontal: nil,
-                coriolisVertical: nil,
-                spinRateRPM: s.spinRateRPM,
-                stabilityFactorSg: sg,
-                dynamicStabilitySd: sd,
-                yawOfReposeAngle: Measurement(value: Math.radToMOA(yawRepose), unit: .minutesOfAngle)
+                spinDrift: spinDriftMeasurement,
+                coriolisHorizontal: coriolisResult?.horizontal,
+                coriolisVertical: coriolisResult?.vertical,
+                spinRateRPM: hasSpin ? s.spinRateRPM : nil,
+                stabilityFactorSg: hasSpin ? sg : nil,
+                dynamicStabilitySd: hasSpin ? sd : nil,
+                yawOfReposeAngle: hasSpin ? Measurement(value: Math.radToMOA(yawRepose), unit: .minutesOfAngle) : nil
             )
             ballistics.distances.append(point)
         }
@@ -296,7 +363,12 @@ public struct Solver4DOF: Sendable {
         sampleIndex += 1
         nextSampleFeet = Double(sampleIndex) * stepFeet
 
-        while state.position.x < maxFeet && state.totalSpeedFPS > 200.0 {
+        outerLoop: while state.position.x < maxFeet && state.velocity.x > 50.0 {
+            if nextSampleFeet > maxFeet { break outerLoop }
+            if abs(state.velocity.y) > 3.0 * max(10.0, state.velocity.x) && state.position.y < -100.0 {
+                break outerLoop
+            }
+
             let stepRes = DormandPrince54.step4DOF(
                 s: state,
                 dt: currentDt,
@@ -327,7 +399,7 @@ public struct Solver4DOF: Sendable {
 
                     sampleIndex += 1
                     nextSampleFeet = Double(sampleIndex) * stepFeet
-                    if nextSampleFeet > maxFeet { break }
+                    if nextSampleFeet > maxFeet { break outerLoop }
                 }
 
                 state = sNext
