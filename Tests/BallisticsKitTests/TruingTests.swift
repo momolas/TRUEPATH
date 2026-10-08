@@ -17,7 +17,7 @@ import Testing
     let targetDist = Measurement(value: 500.0, unit: UnitLength.yards)
     let trueBC = 0.450
 
-    let forwardSolution = Ballistics.solve3DOF(
+    let forwardSolution = Ballistics.solve(
         preferredDistanceUnit: .yards,
         dragFunction: .g1,
         dragCoefficient: trueBC,
@@ -63,7 +63,7 @@ import Testing
     let targetDist = Measurement(value: 900.0, unit: UnitLength.yards)
     let trueBC = 0.535
 
-    let forwardSolution = Ballistics.solve3DOF(
+    let forwardSolution = Ballistics.solve(
         preferredDistanceUnit: .yards,
         dragFunction: .g7,
         dragCoefficient: trueBC,

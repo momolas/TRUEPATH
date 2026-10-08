@@ -130,52 +130,6 @@ public struct Ballistics: Sendable, Equatable, Hashable {
         )
     }
 
-    /**
-     Solves the trajectory using the unified STANAG 4355 solver (backward compatible alias).
-    */
-    public static func solve3DOF(
-        preferredDistanceUnit: UnitLength = .yards,
-        dragFunction: DragFunction = .g1,
-        dragCoefficient: Double,
-        initialVelocity: Measurement<UnitSpeed>,
-        sightHeight: Measurement<UnitLength>,
-        shootingAngle: Measurement<UnitAngle> = Measurement(value: 0, unit: .degrees),
-        zeroRange: Measurement<UnitLength>,
-        atmosphere: Atmosphere? = nil,
-        windSpeed: Measurement<UnitSpeed> = Measurement(value: 0, unit: .milesPerHour),
-        windAngle: Double = 0,
-        weight: Measurement<UnitMass> = Measurement<UnitMass>(value: 0, unit: .grains),
-        distanceStep: Measurement<UnitLength> = Measurement(value: 1, unit: .yards),
-        twist: Measurement<UnitLength>? = nil,
-        twistDirection: TwistDirection = .right,
-        bulletDiameter: Measurement<UnitLength>? = nil,
-        bulletLength: Measurement<UnitLength>? = nil,
-        latitude: Measurement<UnitAngle>? = nil,
-        azimuth: Measurement<UnitAngle>? = nil,
-        maxRange: Measurement<UnitLength>? = nil
-    ) -> Ballistics {
-        return Solver3DOF.solve(
-            preferredDistanceUnit: preferredDistanceUnit,
-            dragFunction: dragFunction,
-            dragCoefficient: dragCoefficient,
-            initialVelocity: initialVelocity,
-            sightHeight: sightHeight,
-            shootingAngle: shootingAngle,
-            zeroRange: zeroRange,
-            atmosphere: atmosphere,
-            windSpeed: windSpeed,
-            windAngle: windAngle,
-            weight: weight,
-            distanceStep: distanceStep,
-            twist: twist,
-            twistDirection: twistDirection,
-            bulletDiameter: bulletDiameter,
-            bulletLength: bulletLength,
-            latitude: latitude,
-            azimuth: azimuth,
-            maxRange: maxRange
-        )
-    }
 
     /// Primary entrypoint solving the projectile trajectory using NATO STANAG 4355 4-DOF.
     @inlinable
@@ -419,9 +373,9 @@ public struct Ballistics: Sendable, Equatable, Hashable {
     }
 
     /**
-     Solves a high-fidelity 6-DOF rigid-body trajectory (Lapua Ballistics standard) using 4th-order Runge-Kutta integration.
+     Solves the trajectory using full rigid properties and aerodynamic coefficient functions (NATO STANAG 4355 4-DOF).
      */
-    public static func solve6DOF(
+    public static func solve(
         properties: ProjectileProperties,
         coefficients: AerodynamicCoefficients? = nil,
         dragFunction: DragFunction = .g7,
@@ -430,7 +384,7 @@ public struct Ballistics: Sendable, Equatable, Hashable {
         sightHeight: Measurement<UnitLength>,
         zeroRange: Measurement<UnitLength>,
         shootingAngle: Measurement<UnitAngle> = Measurement(value: 0, unit: .degrees),
-        twist: Measurement<UnitLength>,
+        twist: Measurement<UnitLength>? = nil,
         twistDirection: TwistDirection = .right,
         atmosphere: Atmosphere? = nil,
         windSpeed: Measurement<UnitSpeed> = Measurement(value: 0, unit: .milesPerHour),
@@ -442,15 +396,55 @@ public struct Ballistics: Sendable, Equatable, Hashable {
         tolerance: IntegratorTolerance = .standard,
         maxRange: Measurement<UnitLength>? = nil
     ) -> Ballistics {
-        let aeroCoeffs = coefficients ?? AerodynamicCoefficients.synthesize(
+        return Solver4DOF.solve(
             properties: properties,
+            coefficients: coefficients,
             dragFunction: dragFunction,
-            dragCoefficient: dragCoefficient
+            dragCoefficient: dragCoefficient,
+            initialVelocity: initialVelocity,
+            sightHeight: sightHeight,
+            zeroRange: zeroRange,
+            shootingAngle: shootingAngle,
+            twist: twist,
+            twistDirection: twistDirection,
+            atmosphere: atmosphere,
+            windSpeed: windSpeed,
+            windAngle: windAngle,
+            latitude: latitude,
+            azimuth: azimuth,
+            distanceStep: distanceStep,
+            preferredDistanceUnit: preferredDistanceUnit,
+            tolerance: tolerance,
+            maxRange: maxRange
         )
+    }
 
-        return Solver6DOF.solve(
+    /// Convenience alias forwarding to solve(properties: ...).
+    @inlinable
+    public static func solve4DOF(
+        properties: ProjectileProperties,
+        coefficients: AerodynamicCoefficients? = nil,
+        dragFunction: DragFunction = .g7,
+        dragCoefficient: Double = 0.500,
+        initialVelocity: Measurement<UnitSpeed>,
+        sightHeight: Measurement<UnitLength>,
+        zeroRange: Measurement<UnitLength>,
+        shootingAngle: Measurement<UnitAngle> = Measurement(value: 0, unit: .degrees),
+        twist: Measurement<UnitLength>? = nil,
+        twistDirection: TwistDirection = .right,
+        atmosphere: Atmosphere? = nil,
+        windSpeed: Measurement<UnitSpeed> = Measurement(value: 0, unit: .milesPerHour),
+        windAngle: Double = 0,
+        latitude: Measurement<UnitAngle>? = nil,
+        azimuth: Measurement<UnitAngle>? = nil,
+        distanceStep: Measurement<UnitLength> = Measurement(value: 1, unit: .yards),
+        preferredDistanceUnit: UnitLength = .yards,
+        tolerance: IntegratorTolerance = .standard,
+        maxRange: Measurement<UnitLength>? = nil
+    ) -> Ballistics {
+        return solve(
             properties: properties,
-            coefficients: aeroCoeffs,
+            coefficients: coefficients,
             dragFunction: dragFunction,
             dragCoefficient: dragCoefficient,
             initialVelocity: initialVelocity,

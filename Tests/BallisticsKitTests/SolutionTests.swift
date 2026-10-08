@@ -12,7 +12,7 @@ import BallisticsKit
 @Test func simpleSolution() async throws {
 
     // Generate a full ballistic solution
-    let solution = Ballistics.solve3DOF(
+    let solution = Ballistics.solve(
         dragCoefficient: 0.414,
         initialVelocity: Measurement(value: 3300, unit: .feetPerSecond),
         sightHeight: Measurement(value: 1.8, unit: .inches),
@@ -88,7 +88,7 @@ import BallisticsKit
 @Test func solutionWithAtmosphere() async throws {
 
     // Generate a full ballistic solution
-    let solution = Ballistics.solve3DOF(
+    let solution = Ballistics.solve(
         dragCoefficient: 0.414,
         initialVelocity: Measurement(value: 3300, unit: .feetPerSecond),
         sightHeight: Measurement(value: 1.8, unit: .inches),
@@ -169,7 +169,7 @@ import BallisticsKit
 
 @Test func solutionWithSmallStep() async throws {
     // Generate a solution with small step to verify sampling robustness
-    let solution = Ballistics.solve3DOF(
+    let solution = Ballistics.solve(
         dragCoefficient: 0.414,
         initialVelocity: Measurement(value: 3000, unit: .feetPerSecond),
         sightHeight: Measurement(value: 1.5, unit: .inches),

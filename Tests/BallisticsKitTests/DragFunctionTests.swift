@@ -11,7 +11,7 @@ import Testing
 
 @Test func dragFunctionG1vsG7() async throws {
     // Solve with G1 drag function
-    let solutionG1 = Ballistics.solve3DOF(
+    let solutionG1 = Ballistics.solve(
         preferredDistanceUnit: .yards,
         dragFunction: .g1,
         dragCoefficient: 0.414,
@@ -25,7 +25,7 @@ import Testing
     )
 
     // Solve with G7 drag function (using corresponding G7 BC approx ~ 0.210)
-    let solutionG7 = Ballistics.solve3DOF(
+    let solutionG7 = Ballistics.solve(
         preferredDistanceUnit: .yards,
         dragFunction: .g7,
         dragCoefficient: 0.210,

@@ -19,12 +19,12 @@ import Testing
     #expect(abs(eSum) < 1e-12)
 }
 
-@Test func solver6DOFWithAdaptiveIntegrator() throws {
+@Test func adaptiveIntegratorPrecisionComparison() throws {
     let bullet = BulletCatalog.sierraMatchKing308_175gr
     let props = bullet.projectileProperties()
 
     // Run standard tolerance simulation
-    let solutionStandard = Ballistics.solve6DOF(
+    let solutionStandard = Ballistics.solve(
         properties: props,
         dragFunction: .g7,
         dragCoefficient: bullet.bcG7 ?? 0.243,
@@ -39,7 +39,7 @@ import Testing
     )
 
     // Run high precision tolerance simulation
-    let solutionHighPrecision = Ballistics.solve6DOF(
+    let solutionHighPrecision = Ballistics.solve(
         properties: props,
         dragFunction: .g7,
         dragCoefficient: bullet.bcG7 ?? 0.243,

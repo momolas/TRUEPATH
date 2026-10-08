@@ -198,7 +198,7 @@ public struct MonteCarlo: Sendable {
         let targetDistanceInches = targetDistance.converted(to: .inches).value
 
         // Baseline trajectory for zero reference
-        let baseline = Ballistics.solve3DOF(
+        let baseline = Ballistics.solve(
             preferredDistanceUnit: .yards,
             dragFunction: dragFunction,
             dragCoefficient: dragCoefficient,
@@ -247,7 +247,7 @@ public struct MonteCarlo: Sendable {
             let shotAngularY = g3 * sdAngleRad
             let shotAngularX = g4 * sdAngleRad
 
-            let shotSolution = Ballistics.solve3DOF(
+            let shotSolution = Ballistics.solve(
                 preferredDistanceUnit: .yards,
                 dragFunction: dragFunction,
                 dragCoefficient: dragCoefficient,

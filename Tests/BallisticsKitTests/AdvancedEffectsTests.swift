@@ -70,7 +70,7 @@ import Testing
 }
 
 @Test func integratedTrajectoryEffects() throws {
-    let solution = Ballistics.solve3DOF(
+    let solution = Ballistics.solve(
         preferredDistanceUnit: .yards,
         dragFunction: .g7,
         dragCoefficient: 0.250,

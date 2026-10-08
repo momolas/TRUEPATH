@@ -115,8 +115,8 @@ import Testing
     #expect(props.massSlugs > 0)
     #expect(props.referenceAreaSquareFeet > 0)
 
-    // Solve 3-DOF trajectory with catalog bullet
-    let solution = Ballistics.solve3DOF(
+    // Solve trajectory with catalog bullet
+    let solution = Ballistics.solve(
         preferredDistanceUnit: .yards,
         dragFunction: .g7,
         dragCoefficient: bullet.bcG7 ?? 0.300,
@@ -155,8 +155,8 @@ import Testing
     let crossWind = Measurement<UnitSpeed>(value: 4.0, unit: .metersPerSecond) // 4 m/s full crosswind
     let windAngle = 90.0 // 3 o'clock
     
-    // 1. Compute 3-DOF Solution with preferred unit in METERS
-    let solution3DOF = Ballistics.solve3DOF(
+    // 1. Compute Unified STANAG 4355 Solution with preferred unit in METERS
+    let solution = Ballistics.solve(
         preferredDistanceUnit: .meters,
         dragFunction: .g7,
         dragCoefficient: bcG7,
@@ -176,12 +176,12 @@ import Testing
     )
     
     // Verify 100m Zero Point
-    let point100m = try #require(solution3DOF.getPoint(at: Measurement<UnitLength>(value: 100, unit: .meters)))
+    let point100m = try #require(solution.getPoint(at: Measurement<UnitLength>(value: 100, unit: .meters)))
     let dropCorrectionAt100mMRAD = point100m.dropCorrection.converted(to: .milliradians).value
     #expect(abs(dropCorrectionAt100mMRAD) < 0.05) // Effectively 0 at zero range
     
     // Verify 300m Impact Point
-    let point300m = try #require(solution3DOF.getPoint(at: targetRange))
+    let point300m = try #require(solution.getPoint(at: targetRange))
     
     let dropMeters = point300m.drop.converted(to: .meters).value
     let dropCorrectionMRAD = point300m.dropCorrection.converted(to: .milliradians).value
@@ -197,8 +197,8 @@ import Testing
     let energyJoules = point300m.energy.converted(to: .joules).value
     let flightTime = point300m.travelTime.converted(to: .seconds).value
     
-    // 2. Compute 6-DOF Adaptive Solution (DOPRI5)
-    let solution6DOF = Ballistics.solve6DOF(
+    // 2. Compute Unified Solution using ProjectileProperties overload
+    let solutionProps = Ballistics.solve(
         properties: bullet.projectileProperties(),
         dragFunction: .g7,
         dragCoefficient: bcG7,
@@ -216,9 +216,9 @@ import Testing
         maxRange: Measurement<UnitLength>(value: 350, unit: .meters)
     )
     
-    let point6DOF300m = try #require(solution6DOF.getPoint(at: targetRange))
-    let drop6DOF = point6DOF300m.drop.converted(to: .meters).value
-    let vel6DOF = point6DOF300m.velocity.converted(to: .metersPerSecond).value
+    let pointProps300m = try #require(solutionProps.getPoint(at: targetRange))
+    let dropProps = pointProps300m.drop.converted(to: .meters).value
+    let velProps = pointProps300m.velocity.converted(to: .metersPerSecond).value
     
     // Assertions based on verified .308 175gr ballistics:
     // Drop at 300m (with 100m zero) is -41.2 cm
@@ -239,7 +239,7 @@ import Testing
     #expect(velocityMps > 700 && velocityMps < 740) // Supersonic Mach > 2.1
     #expect(energyJoules > 2800 && energyJoules < 3100) // ~2960 J
     
-    // 6-DOF facade validation (unified with STANAG 4355)
-    #expect(abs(drop6DOF - dropMeters) < 0.01)
-    #expect(abs(vel6DOF - velocityMps) < 5.0)
+    // Equivalence validation between standard and ProjectileProperties overloads
+    #expect(abs(dropProps - dropMeters) < 0.01)
+    #expect(abs(velProps - velocityMps) < 5.0)
 }

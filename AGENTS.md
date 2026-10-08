@@ -132,6 +132,6 @@ If the Xcode MCP is configured, prefer its tools over generic alternatives when 
 - Use `AcceleratedDragTable` with uniform Mach grid spacing for $O(1)$ SIMD table lookups via `vDSP_vlintD`.
 - For 6-DOF trajectory integration, use adaptive-step Runge-Kutta Dormand-Prince 5(4) (`DormandPrince54`) with the FSAL property and composite SIMD error norm regulation.
 - All hardware-accelerated code (`Accelerate`) must be conditionally compiled under `#if canImport(Accelerate)` with equivalent pure Swift fallbacks for portability.
-- Consolidate trajectory solving into the single unified 4-DOF STANAG 4355 engine (`Solver4DOF.solve`), maintaining `solve3DOF` and `solve6DOF` as deprecated backward-compatible facades forwarding all aerodynamic parameters. In the firing coordinate frame ($X$ forward, $Y$ up, $Z$ right), ensure positive lateral lift ($+Z$) for right-hand twist to properly combine with crosswind deflection.
+- Consolidate trajectory solving into the single unified 4-DOF STANAG 4355 engine (`Solver4DOF.solve` / `Ballistics.solve`), eliminating legacy 3-DOF and 6-DOF facades. In the firing coordinate frame ($X$ forward, $Y$ up, $Z$ right), ensure positive lateral lift ($+Z$) for right-hand twist to properly combine with crosswind deflection.
 - In adaptive trajectory integrators (`DormandPrince54`), always guard against infinite fall loops with a ground plunge condition ($|v_y| > 3 v_x$ when $y < 0$) and calibrate absolute tolerances to macroscopic physical scale ($\ge 10^{-4}$ ft).
 

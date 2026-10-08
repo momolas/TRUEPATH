@@ -13,7 +13,7 @@ import BallisticsKit
     let models: [DragFunction] = [.g1, .g2, .g5, .g6, .g7, .g8]
 
     for model in models {
-        let solution = Ballistics.solve3DOF(
+        let solution = Ballistics.solve(
             preferredDistanceUnit: .yards,
             dragFunction: model,
             dragCoefficient: 0.450,

@@ -4,8 +4,7 @@ A high-performance Swift 6 port and modern evolution of the `libballistics` libr
 
 ## Features
 
-- **Accurate trajectory calculations** with 3-DOF point-mass numerical integration (`Solver3DOF`) and continuous query interpolation
-- **High-Fidelity 6-DOF Simulation**: Full rigid-body 6-DOF solver (`Solver6DOF`) following STANAG 4355 / McCoy standards
+- **Unified 4-DOF STANAG 4355 Engine**: Complete modified point-mass numerical integration (`Solver4DOF`) with continuous query interpolation, drift, aerodynamic jump, and Coriolis corrections
 - **Aerodynamic Drag Models**: Support for standard **G1, G2, G5, G6, G7, and G8** profiles, plus Doppler radar **Custom Drag Models (CDM)**
 - **Ballistic Truing**: Live-fire calibration of true muzzle velocity ($V_0$) and ballistic coefficient ($BC$) via `Truing`
 - **Incline Shooting**: Rifleman's rule and Sierra improved cosine approximations via `InclineShooting`
@@ -46,7 +45,7 @@ dependencies: [
 import BallisticsKit
 
 // Generate a comprehensive ballistic solution
-let solution = Ballistics.solve3DOF(
+let solution = Ballistics.solve(
     preferredDistanceUnit: .yards, // Distance units used for trajectory sampling
     dragFunction: .g7, // .g1, .g2, .g5, .g6, .g7, .g8
     dragCoefficient: 0.265, // Projectile ballistic coefficient
