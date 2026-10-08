@@ -6,6 +6,9 @@
 //
 
 import Foundation
+#if canImport(Accelerate)
+import Accelerate
+#endif
 
 /// Represents a computed ballistic trajectory solution with continuous query and interpolation capability.
 public struct Ballistics: Sendable, Equatable, Hashable {
@@ -53,6 +56,83 @@ public struct Ballistics: Sendable, Equatable, Hashable {
      - Returns:
        A ballistics object containing trajectory points sampled at regular distance steps with continuous query capability.
     */
+    /**
+     Solves the projectile trajectory using the unified NATO STANAG 4355 Modified Point Mass (4-DOF) solver.
+
+     - Parameters:
+       - preferredDistanceUnit: The preferred distance unit, used for sampling (e.g., .yards or .meters). Default is .yards.
+       - dragFunction: The aerodynamic drag function (.g1, .g2, .g5, .g6, .g7, .g8). Default is .g1.
+       - dragCoefficient: The drag coefficient of the projectile.
+       - initialVelocity: The muzzle velocity of the projectile.
+       - sightHeight: The height of the sight above the bore axis.
+       - shootingAngle: The actual angle of elevation at which the projectile is fired. Positive is up, negative is down.
+       - zeroRange: The distance the projectile is zeroed at.
+       - atmosphere: The atmospheric conditions to consider (temperature, pressure, altitude, humidity). Optional.
+       - windSpeed: The speed of the wind.
+       - windAngle: The direction of the wind relative to the projectile's path, in degrees (0° = headwind, 90° = left to right).
+       - weight: The projectile weight.
+       - distanceStep: The sampling step in the preferred unit. Default is 1 yard.
+       - twist: Barrel rifling twist rate (e.g. 1 turn in 10 inches). Optional.
+       - twistDirection: Barrel rifling twist direction (.right or .left). Default is .right.
+       - bulletDiameter: Projectile caliber/diameter. Optional.
+       - bulletLength: Projectile length. Optional.
+       - latitude: Firing position latitude. Optional.
+       - azimuth: Shooting compass azimuth. Optional.
+       - tolerance: Numerical tolerance configuration for adaptive Runge-Kutta Dormand-Prince integration. Default is .standard.
+       - maxRange: Maximum downrange distance limit. Optional.
+
+     - Returns:
+       A ballistics object containing trajectory points sampled at regular distance steps with continuous query capability.
+    */
+    public static func solve4DOF(
+        preferredDistanceUnit: UnitLength = .yards,
+        dragFunction: DragFunction = .g1,
+        dragCoefficient: Double,
+        initialVelocity: Measurement<UnitSpeed>,
+        sightHeight: Measurement<UnitLength>,
+        shootingAngle: Measurement<UnitAngle> = Measurement(value: 0, unit: .degrees),
+        zeroRange: Measurement<UnitLength>,
+        atmosphere: Atmosphere? = nil,
+        windSpeed: Measurement<UnitSpeed> = Measurement(value: 0, unit: .milesPerHour),
+        windAngle: Double = 0,
+        weight: Measurement<UnitMass> = Measurement<UnitMass>(value: 175, unit: .grains),
+        distanceStep: Measurement<UnitLength> = Measurement(value: 1, unit: .yards),
+        twist: Measurement<UnitLength>? = nil,
+        twistDirection: TwistDirection = .right,
+        bulletDiameter: Measurement<UnitLength>? = nil,
+        bulletLength: Measurement<UnitLength>? = nil,
+        latitude: Measurement<UnitAngle>? = nil,
+        azimuth: Measurement<UnitAngle>? = nil,
+        tolerance: IntegratorTolerance = .standard,
+        maxRange: Measurement<UnitLength>? = nil
+    ) -> Ballistics {
+        return Solver4DOF.solve(
+            preferredDistanceUnit: preferredDistanceUnit,
+            dragFunction: dragFunction,
+            dragCoefficient: dragCoefficient,
+            initialVelocity: initialVelocity,
+            sightHeight: sightHeight,
+            shootingAngle: shootingAngle,
+            zeroRange: zeroRange,
+            atmosphere: atmosphere,
+            windSpeed: windSpeed,
+            windAngle: windAngle,
+            weight: weight,
+            distanceStep: distanceStep,
+            twist: twist,
+            twistDirection: twistDirection,
+            bulletDiameter: bulletDiameter,
+            bulletLength: bulletLength,
+            latitude: latitude,
+            azimuth: azimuth,
+            tolerance: tolerance,
+            maxRange: maxRange
+        )
+    }
+
+    /**
+     Solves the trajectory using the unified STANAG 4355 solver (backward compatible alias).
+    */
     public static func solve3DOF(
         preferredDistanceUnit: UnitLength = .yards,
         dragFunction: DragFunction = .g1,
@@ -97,7 +177,7 @@ public struct Ballistics: Sendable, Equatable, Hashable {
         )
     }
 
-    /// Alias for solve3DOF for backwards compatibility.
+    /// Primary entrypoint solving the projectile trajectory using NATO STANAG 4355 4-DOF.
     @inlinable
     public static func solve(
         preferredDistanceUnit: UnitLength = .yards,
@@ -120,7 +200,7 @@ public struct Ballistics: Sendable, Equatable, Hashable {
         azimuth: Measurement<UnitAngle>? = nil,
         maxRange: Measurement<UnitLength>? = nil
     ) -> Ballistics {
-        solve3DOF(
+        solve4DOF(
             preferredDistanceUnit: preferredDistanceUnit,
             dragFunction: dragFunction,
             dragCoefficient: dragCoefficient,
@@ -219,6 +299,126 @@ public struct Ballistics: Sendable, Equatable, Hashable {
     }
 
     /**
+     Vectorized batch retrieval of ballistic points using Apple Accelerate.
+     Interpolates drops, windages, velocities, energies, etc. for an entire array of target distances simultaneously.
+
+     - Parameter distancesArray: The array of distances at which to retrieve or interpolate points.
+     - Returns: An array of interpolated `Point` objects for all valid in-bounds distances.
+     */
+    public func getPoints(at distancesArray: [Measurement<UnitLength>]) -> [Point] {
+        guard !distances.isEmpty, !distancesArray.isEmpty else { return [] }
+
+        let stepVal = distanceStep.value
+        guard stepVal > 0 else { return [] }
+
+        let maxIdx = Double(distances.count - 1)
+        var validQueries = [(queryIndex: Double, originalDistance: Measurement<UnitLength>)]()
+        validQueries.reserveCapacity(distancesArray.count)
+
+        for d in distancesArray {
+            let req = d.converted(to: preferredDistanceUnit).value
+            let qIdx = req / stepVal
+            if qIdx >= 0 && qIdx <= maxIdx {
+                validQueries.append((queryIndex: qIdx, originalDistance: d))
+            }
+        }
+
+        guard !validQueries.isEmpty else { return [] }
+
+        let count = validQueries.count
+        let indices = validQueries.map { $0.queryIndex }
+
+        let dropsTable = distances.map { $0.drop.value }
+        let dropCorrTable = distances.map { $0.dropCorrection.value }
+        let windageTable = distances.map { $0.windage.value }
+        let windageCorrTable = distances.map { $0.windageCorrection.value }
+        let timeTable = distances.map { $0.travelTime.value }
+        let vTable = distances.map { $0.velocity.value }
+        let vxTable = distances.map { $0.velocityX.value }
+        let vyTable = distances.map { $0.velocityY.value }
+        let energyTable = distances.map { $0.energy.value }
+
+        var interpDrops = [Double](repeating: 0, count: count)
+        var interpDropCorrs = [Double](repeating: 0, count: count)
+        var interpWindages = [Double](repeating: 0, count: count)
+        var interpWindageCorrs = [Double](repeating: 0, count: count)
+        var interpTimes = [Double](repeating: 0, count: count)
+        var interpVs = [Double](repeating: 0, count: count)
+        var interpVxs = [Double](repeating: 0, count: count)
+        var interpVys = [Double](repeating: 0, count: count)
+        var interpEnergies = [Double](repeating: 0, count: count)
+
+        #if canImport(Accelerate)
+        let nTable = vDSP_Length(distances.count)
+        let nQuery = vDSP_Length(count)
+
+        vDSP_vlintD(dropsTable, indices, 1, &interpDrops, 1, nQuery, nTable)
+        vDSP_vlintD(dropCorrTable, indices, 1, &interpDropCorrs, 1, nQuery, nTable)
+        vDSP_vlintD(windageTable, indices, 1, &interpWindages, 1, nQuery, nTable)
+        vDSP_vlintD(windageCorrTable, indices, 1, &interpWindageCorrs, 1, nQuery, nTable)
+        vDSP_vlintD(timeTable, indices, 1, &interpTimes, 1, nQuery, nTable)
+        vDSP_vlintD(vTable, indices, 1, &interpVs, 1, nQuery, nTable)
+        vDSP_vlintD(vxTable, indices, 1, &interpVxs, 1, nQuery, nTable)
+        vDSP_vlintD(vyTable, indices, 1, &interpVys, 1, nQuery, nTable)
+        vDSP_vlintD(energyTable, indices, 1, &interpEnergies, 1, nQuery, nTable)
+        #else
+        for i in 0..<count {
+            let idx = indices[i]
+            let base = Int(idx)
+            let frac = idx - Double(base)
+            if base >= distances.count - 1 {
+                interpDrops[i] = dropsTable.last!
+                interpDropCorrs[i] = dropCorrTable.last!
+                interpWindages[i] = windageTable.last!
+                interpWindageCorrs[i] = windageCorrTable.last!
+                interpTimes[i] = timeTable.last!
+                interpVs[i] = vTable.last!
+                interpVxs[i] = vxTable.last!
+                interpVys[i] = vyTable.last!
+                interpEnergies[i] = energyTable.last!
+            } else {
+                interpDrops[i] = dropsTable[base] + frac * (dropsTable[base + 1] - dropsTable[base])
+                interpDropCorrs[i] = dropCorrTable[base] + frac * (dropCorrTable[base + 1] - dropCorrTable[base])
+                interpWindages[i] = windageTable[base] + frac * (windageTable[base + 1] - windageTable[base])
+                interpWindageCorrs[i] = windageCorrTable[base] + frac * (windageCorrTable[base + 1] - windageCorrTable[base])
+                interpTimes[i] = timeTable[base] + frac * (timeTable[base + 1] - timeTable[base])
+                interpVs[i] = vTable[base] + frac * (vTable[base + 1] - vTable[base])
+                interpVxs[i] = vxTable[base] + frac * (vxTable[base + 1] - vxTable[base])
+                interpVys[i] = vyTable[base] + frac * (vyTable[base + 1] - vyTable[base])
+                interpEnergies[i] = energyTable[base] + frac * (energyTable[base + 1] - energyTable[base])
+            }
+        }
+        #endif
+
+        let p0 = distances[0]
+        var resultPoints = [Point]()
+        resultPoints.reserveCapacity(count)
+
+        for i in 0..<count {
+            let d = validQueries[i].originalDistance
+            resultPoints.append(
+                Point(
+                    range: d,
+                    drop: Measurement(value: interpDrops[i], unit: p0.drop.unit),
+                    dropCorrection: Measurement(value: interpDropCorrs[i], unit: p0.dropCorrection.unit),
+                    windage: Measurement(value: interpWindages[i], unit: p0.windage.unit),
+                    windageCorrection: Measurement(value: interpWindageCorrs[i], unit: p0.windageCorrection.unit),
+                    travelTime: Measurement(value: interpTimes[i], unit: p0.travelTime.unit),
+                    velocity: Measurement(value: interpVs[i], unit: p0.velocity.unit),
+                    velocityX: Measurement(value: interpVxs[i], unit: p0.velocityX.unit),
+                    velocityY: Measurement(value: interpVys[i], unit: p0.velocityY.unit),
+                    energy: Measurement(value: interpEnergies[i], unit: p0.energy.unit),
+                    spinDrift: nil,
+                    coriolisHorizontal: nil,
+                    coriolisVertical: nil
+                )
+            )
+        }
+
+        return resultPoints
+    }
+
+    /**
      Solves a high-fidelity 6-DOF rigid-body trajectory (Lapua Ballistics standard) using 4th-order Runge-Kutta integration.
      */
     public static func solve6DOF(
@@ -238,7 +438,9 @@ public struct Ballistics: Sendable, Equatable, Hashable {
         latitude: Measurement<UnitAngle>? = nil,
         azimuth: Measurement<UnitAngle>? = nil,
         distanceStep: Measurement<UnitLength> = Measurement(value: 1, unit: .yards),
-        preferredDistanceUnit: UnitLength = .yards
+        preferredDistanceUnit: UnitLength = .yards,
+        tolerance: IntegratorTolerance = .standard,
+        maxRange: Measurement<UnitLength>? = nil
     ) -> Ballistics {
         let aeroCoeffs = coefficients ?? AerodynamicCoefficients.synthesize(
             properties: properties,

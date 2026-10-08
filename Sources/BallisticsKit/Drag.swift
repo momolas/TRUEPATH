@@ -136,6 +136,13 @@ struct Drag {
         (5.00, 0.1800)
     ]
 
+    // Precomputed SIMD-accelerated drag tables
+    private static let acceleratedG2 = AcceleratedDragTable(points: g2MachTable, step: 0.002)
+    private static let acceleratedG5 = AcceleratedDragTable(points: g5MachTable, step: 0.002)
+    private static let acceleratedG6 = AcceleratedDragTable(points: g6MachTable, step: 0.002)
+    private static let acceleratedG7 = AcceleratedDragTable(points: g7MachTable, step: 0.002)
+    private static let acceleratedG8 = AcceleratedDragTable(points: g8MachTable, step: 0.002)
+
     static func retard(
         dragFunction: DragFunction = .g1,
         dragCoefficient: Double,
@@ -148,15 +155,15 @@ struct Drag {
         case .g1:
             return retardG1(dragCoefficient: dragCoefficient, projectileVelocity: projectileVelocity)
         case .g2:
-            return retardTable(table: g2MachTable, dragCoefficient: dragCoefficient, projectileVelocity: projectileVelocity, speedOfSoundFPS: speedOfSoundFPS)
+            return retardTable(table: acceleratedG2, dragCoefficient: dragCoefficient, projectileVelocity: projectileVelocity, speedOfSoundFPS: speedOfSoundFPS)
         case .g5:
-            return retardTable(table: g5MachTable, dragCoefficient: dragCoefficient, projectileVelocity: projectileVelocity, speedOfSoundFPS: speedOfSoundFPS)
+            return retardTable(table: acceleratedG5, dragCoefficient: dragCoefficient, projectileVelocity: projectileVelocity, speedOfSoundFPS: speedOfSoundFPS)
         case .g6:
-            return retardTable(table: g6MachTable, dragCoefficient: dragCoefficient, projectileVelocity: projectileVelocity, speedOfSoundFPS: speedOfSoundFPS)
+            return retardTable(table: acceleratedG6, dragCoefficient: dragCoefficient, projectileVelocity: projectileVelocity, speedOfSoundFPS: speedOfSoundFPS)
         case .g7:
-            return retardTable(table: g7MachTable, dragCoefficient: dragCoefficient, projectileVelocity: projectileVelocity, speedOfSoundFPS: speedOfSoundFPS)
+            return retardTable(table: acceleratedG7, dragCoefficient: dragCoefficient, projectileVelocity: projectileVelocity, speedOfSoundFPS: speedOfSoundFPS)
         case .g8:
-            return retardTable(table: g8MachTable, dragCoefficient: dragCoefficient, projectileVelocity: projectileVelocity, speedOfSoundFPS: speedOfSoundFPS)
+            return retardTable(table: acceleratedG8, dragCoefficient: dragCoefficient, projectileVelocity: projectileVelocity, speedOfSoundFPS: speedOfSoundFPS)
         }
     }
 
@@ -214,34 +221,14 @@ struct Drag {
     }
 
     private static func retardTable(
-        table: [(mach: Double, cd: Double)],
+        table: AcceleratedDragTable,
         dragCoefficient: Double,
         projectileVelocity: Double,
         speedOfSoundFPS: Double
     ) -> Double {
         let soundSpeed = max(100.0, speedOfSoundFPS)
         let mach = projectileVelocity / soundSpeed
-        let cd = interpolateCd(table: table, mach: mach)
+        let cd = table.interpolate(mach: mach)
         return (standardDecelerationFactor * cd * projectileVelocity) / dragCoefficient
-    }
-
-    private static func interpolateCd(table: [(mach: Double, cd: Double)], mach: Double) -> Double {
-        if mach <= table.first!.mach {
-            return table.first!.cd
-        }
-        if mach >= table.last!.mach {
-            return table.last!.cd
-        }
-
-        for i in 0..<(table.count - 1) {
-            let p0 = table[i]
-            let p1 = table[i + 1]
-            if mach >= p0.mach && mach <= p1.mach {
-                let factor = (mach - p0.mach) / (p1.mach - p0.mach)
-                return p0.cd + factor * (p1.cd - p0.cd)
-            }
-        }
-
-        return table.last!.cd
     }
 }

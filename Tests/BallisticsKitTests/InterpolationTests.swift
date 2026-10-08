@@ -49,3 +49,38 @@ import BallisticsKit
     let expectedDrop125 = (drop100 + drop150) / 2.0
     #expect(abs(drop125 - expectedDrop125) < 0.05)
 }
+
+@Test func testVectorizedBatchInterpolation() throws {
+    let solution = Ballistics.solve3DOF(
+        preferredDistanceUnit: .yards,
+        dragFunction: .g7,
+        dragCoefficient: 0.265,
+        initialVelocity: Measurement(value: 2750, unit: .feetPerSecond),
+        sightHeight: Measurement(value: 1.5, unit: .inches),
+        zeroRange: Measurement(value: 100, unit: .yards),
+        distanceStep: Measurement(value: 25, unit: .yards)
+    )
+
+    let queryDistances: [Measurement<UnitLength>] = [
+        Measurement(value: 75.5, unit: .yards),
+        Measurement(value: 125.0, unit: .yards),
+        Measurement(value: 233.7, unit: .yards),
+        Measurement(value: 350.2, unit: .yards),
+        Measurement(value: 500.0, unit: .yards)
+    ]
+
+    let batchPoints = solution.getPoints(at: queryDistances)
+    #expect(batchPoints.count == queryDistances.count)
+
+    // Verify consistency between scalar getPoint and vectorized getPoints
+    for (i, d) in queryDistances.enumerated() {
+        let scalarPoint = try #require(solution.getPoint(at: d))
+        let vectorPoint = batchPoints[i]
+
+        #expect(abs(scalarPoint.drop.value - vectorPoint.drop.value) < 1e-4)
+        #expect(abs(scalarPoint.velocity.value - vectorPoint.velocity.value) < 1e-4)
+        #expect(abs(scalarPoint.travelTime.value - vectorPoint.travelTime.value) < 1e-4)
+        #expect(abs(scalarPoint.energy.value - vectorPoint.energy.value) < 1e-4)
+    }
+}
+

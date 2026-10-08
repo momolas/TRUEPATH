@@ -83,4 +83,60 @@ public struct Atmosphere: Sendable, Equatable, Hashable {
         let fa = -4e-15 * pow(altitude, 3) + 4e-10 * pow(altitude, 2) - 3e-5 * altitude + 1
         return 1 / fa
     }
+
+    // MARK: - ICAO / ISA Dynamic Atmosphere Extensions
+
+    /// Computes ambient temperature at a different altitude using the ICAO / ISA Standard Atmosphere lapse rate (-6.5 K / 1000m or -3.566 °F / 1000ft in the troposphere).
+    public func temperature(atAltitude targetAltitude: Measurement<UnitLength>) -> Measurement<UnitTemperature> {
+        let baseAltFeet = altitude.converted(to: .feet).value
+        let targetAltFeet = targetAltitude.converted(to: .feet).value
+        let deltaFeet = targetAltFeet - baseAltFeet
+
+        let baseTempF = temperature.converted(to: .fahrenheit).value
+        // Troposphere lapse rate: -3.56616 °F per 1000 ft (0.00356616 °F/ft)
+        let lapseRatePerFoot = 0.00356616
+        let targetTempF = baseTempF - (deltaFeet * lapseRatePerFoot)
+
+        return Measurement(value: targetTempF, unit: .fahrenheit).converted(to: temperature.unit)
+    }
+
+    /// Computes barometric pressure at a different altitude using the ICAO standard barometric formula.
+    public func pressure(atAltitude targetAltitude: Measurement<UnitLength>) -> Measurement<UnitPressure> {
+        let baseAltFeet = altitude.converted(to: .feet).value
+        let targetAltFeet = targetAltitude.converted(to: .feet).value
+        let deltaFeet = targetAltFeet - baseAltFeet
+
+        let baseTempF = temperature.converted(to: .fahrenheit).value
+        let baseTempRankine = max(1.0, baseTempF + 459.67)
+
+        let basePressureInHg = pressure.converted(to: .inchesOfMercury).value
+        let lapseRatePerFoot = 0.00356616
+
+        // P = P0 * (1 - (L * deltaH) / T0) ^ (g * M / (R * L)) where exponent ≈ 5.25588
+        let term = 1.0 - (lapseRatePerFoot * deltaFeet) / baseTempRankine
+        let clampedTerm = max(1e-4, term)
+        let targetPressureInHg = basePressureInHg * pow(clampedTerm, 5.25588)
+
+        return Measurement(value: targetPressureInHg, unit: .inchesOfMercury).converted(to: pressure.unit)
+    }
+
+    /// Computes speed of sound at a given altitude accounting for the atmospheric temperature lapse.
+    public func speedOfSound(atAltitude targetAltitude: Measurement<UnitLength>) -> Measurement<UnitSpeed> {
+        let targetTempF = temperature(atAltitude: targetAltitude).converted(to: .fahrenheit).value
+        let tempRankine = max(1.0, targetTempF + 459.67)
+        let speedFPS = 49.0223 * sqrt(tempRankine)
+        return Measurement(value: speedFPS, unit: .feetPerSecond)
+    }
+
+    /// Returns a new `Atmosphere` instance adjusted for a different altitude according to ICAO standard lapse rates.
+    public func atAltitude(_ newAltitude: Measurement<UnitLength>) -> Atmosphere {
+        let newTemp = temperature(atAltitude: newAltitude)
+        let newPress = pressure(atAltitude: newAltitude)
+        return Atmosphere(
+            altitude: newAltitude,
+            pressure: newPress,
+            temperature: newTemp,
+            relativeHumidity: relativeHumidity
+        )
+    }
 }

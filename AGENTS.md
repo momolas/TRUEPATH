@@ -125,3 +125,13 @@ If the Xcode MCP is configured, prefer its tools over generic alternatives when 
 - `ExecuteSnippet` — test a code snippet in the context of a source file
 - `XcodeRead`, `XcodeWrite`, `XcodeUpdate` — prefer these over generic file tools when working with Xcode project files
 
+
+## Ballistics & Engineering guidelines
+
+- When presenting trajectory solutions, DOPE tables, or ballistic reports, always output both MRAD (with 0.1 MRAD clicks) and MOA (with 1/4 MOA and 1/8 MOA clicks) symmetrically for BOTH elevation and windage.
+- Use `AcceleratedDragTable` with uniform Mach grid spacing for $O(1)$ SIMD table lookups via `vDSP_vlintD`.
+- For 6-DOF trajectory integration, use adaptive-step Runge-Kutta Dormand-Prince 5(4) (`DormandPrince54`) with the FSAL property and composite SIMD error norm regulation.
+- All hardware-accelerated code (`Accelerate`) must be conditionally compiled under `#if canImport(Accelerate)` with equivalent pure Swift fallbacks for portability.
+- Maintain strict solver decoupling: `solve3DOF` must execute classical point-mass deceleration ($ft/s^2$) with ICAO atmosphere adjustments, while `solve4DOF` and `solve6DOF` implement STANAG 4355 MPM and McCoy rigid body dynamics.
+- In adaptive trajectory integrators (`DormandPrince54`), always guard against infinite fall loops with a ground plunge condition ($|v_y| > 3 v_x$ when $y < 0$) and calibrate absolute tolerances to macroscopic physical scale ($\ge 10^{-4}$ ft).
+
