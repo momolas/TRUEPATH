@@ -190,14 +190,11 @@ public struct MonteCarlo: Sendable {
 
         let nominalV0 = nominalVelocity.converted(to: .feetPerSecond).value
         let sdV0 = dispersion.muzzleVelocitySD.converted(to: .feetPerSecond).value
-
         let nominalWind = nominalWindSpeed.converted(to: .milesPerHour).value
         let sdWind = dispersion.windSpeedSD.converted(to: .milesPerHour).value
-
         let sdAngleRad = dispersion.shooterAngularSD.converted(to: .radians).value
         let targetDistanceInches = targetDistance.converted(to: .inches).value
 
-        // Baseline trajectory for zero reference
         let baseline = Ballistics.solve(
             preferredDistanceUnit: .yards,
             dragFunction: dragFunction,
@@ -218,27 +215,194 @@ public struct MonteCarlo: Sendable {
         let baselineDropInches = baselinePoint?.drop.converted(to: .inches).value ?? 0
         let baselineWindageInches = baselinePoint?.windage.converted(to: .inches).value ?? 0
 
-        // Deterministic or pseudo-random generator
-        var rng = CustomRNG(seed: randomSeed ?? 0x123456789ABCDEF0)
+        let output = runBatch(
+            count: shotCount,
+            seed: randomSeed ?? 0x123456789ABCDEF0,
+            nominalV0: nominalV0,
+            sdV0: sdV0,
+            nominalWind: nominalWind,
+            sdWind: sdWind,
+            sdAngleRad: sdAngleRad,
+            targetDistanceInches: targetDistanceInches,
+            baselineDropInches: baselineDropInches,
+            baselineWindageInches: baselineWindageInches,
+            targetDistance: targetDistance,
+            dragFunction: dragFunction,
+            dragCoefficient: dragCoefficient,
+            sightHeight: sightHeight,
+            zeroRange: zeroRange,
+            nominalWindAngle: nominalWindAngle,
+            weight: weight,
+            atmosphere: atmosphere
+        )
 
-        var xDeviations = [Double]()
-        var yDeviations = [Double]()
-        var radialDistances = [Double]()
-        var velocities = [Double]()
-        var energies = [Double]()
-        var times = [Double]()
-        var shots = [MonteCarloShot]()
+        return computeResult(output: output, targetDistance: targetDistance)
+    }
 
-        xDeviations.reserveCapacity(shotCount)
-        yDeviations.reserveCapacity(shotCount)
-        radialDistances.reserveCapacity(shotCount)
-        velocities.reserveCapacity(shotCount)
-        energies.reserveCapacity(shotCount)
-        times.reserveCapacity(shotCount)
-        shots.reserveCapacity(shotCount)
+    /**
+     Asynchronously simulates a stochastic series of shots across multiple CPU cores using Swift Concurrency.
 
-        for _ in 0..<shotCount {
-            // Sample stochastic deviations via Box-Muller Gaussian transform
+     - Parameters: Same as `simulate(...)`.
+     - Returns: A `MonteCarloResult` containing aggregated dispersion statistics and shot data.
+     */
+    public static func simulateAsync(
+        shotCount: Int = 100,
+        targetDistance: Measurement<UnitLength>,
+        dispersion: MonteCarloDispersion = MonteCarloDispersion(),
+        dragFunction: DragFunction = .g1,
+        dragCoefficient: Double,
+        nominalVelocity: Measurement<UnitSpeed>,
+        sightHeight: Measurement<UnitLength>,
+        zeroRange: Measurement<UnitLength>,
+        nominalWindSpeed: Measurement<UnitSpeed> = Measurement(value: 0, unit: .milesPerHour),
+        nominalWindAngle: Double = 90,
+        weight: Measurement<UnitMass> = Measurement(value: 175, unit: .grains),
+        atmosphere: Atmosphere? = nil,
+        randomSeed: UInt64? = nil
+    ) async -> MonteCarloResult {
+        precondition(shotCount >= 2, "Monte Carlo simulation requires at least 2 shots.")
+
+        let nominalV0 = nominalVelocity.converted(to: .feetPerSecond).value
+        let sdV0 = dispersion.muzzleVelocitySD.converted(to: .feetPerSecond).value
+        let nominalWind = nominalWindSpeed.converted(to: .milesPerHour).value
+        let sdWind = dispersion.windSpeedSD.converted(to: .milesPerHour).value
+        let sdAngleRad = dispersion.shooterAngularSD.converted(to: .radians).value
+        let targetDistanceInches = targetDistance.converted(to: .inches).value
+
+        let baseline = Ballistics.solve(
+            preferredDistanceUnit: .yards,
+            dragFunction: dragFunction,
+            dragCoefficient: dragCoefficient,
+            initialVelocity: nominalVelocity,
+            sightHeight: sightHeight,
+            shootingAngle: Measurement(value: 0, unit: .degrees),
+            zeroRange: zeroRange,
+            atmosphere: atmosphere,
+            windSpeed: nominalWindSpeed,
+            windAngle: nominalWindAngle,
+            weight: weight,
+            distanceStep: targetDistance,
+            maxRange: targetDistance + Measurement(value: 10, unit: .yards)
+        )
+
+        let baselinePoint = baseline.getPoint(at: targetDistance)
+        let baselineDropInches = baselinePoint?.drop.converted(to: .inches).value ?? 0
+        let baselineWindageInches = baselinePoint?.windage.converted(to: .inches).value ?? 0
+
+        let baseSeed = randomSeed ?? 0x123456789ABCDEF0
+        let coreCount = max(1, min(8, ProcessInfo.processInfo.activeProcessorCount))
+        let chunkSize = max(1, shotCount / coreCount)
+
+        var chunks = [Int]()
+        var remaining = shotCount
+        while remaining > 0 {
+            let count = min(remaining, chunkSize)
+            chunks.append(count)
+            remaining -= count
+        }
+
+        let combinedOutput: BatchOutput = await withTaskGroup(of: BatchOutput.self) { group in
+            for (idx, count) in chunks.enumerated() {
+                let chunkSeed = baseSeed &+ (UInt64(idx) &* 0x9E3779B97F4A7C15)
+                group.addTask {
+                    runBatch(
+                        count: count,
+                        seed: chunkSeed,
+                        nominalV0: nominalV0,
+                        sdV0: sdV0,
+                        nominalWind: nominalWind,
+                        sdWind: sdWind,
+                        sdAngleRad: sdAngleRad,
+                        targetDistanceInches: targetDistanceInches,
+                        baselineDropInches: baselineDropInches,
+                        baselineWindageInches: baselineWindageInches,
+                        targetDistance: targetDistance,
+                        dragFunction: dragFunction,
+                        dragCoefficient: dragCoefficient,
+                        sightHeight: sightHeight,
+                        zeroRange: zeroRange,
+                        nominalWindAngle: nominalWindAngle,
+                        weight: weight,
+                        atmosphere: atmosphere
+                    )
+                }
+            }
+
+            var allShots = [MonteCarloShot]()
+            var allX = [Double]()
+            var allY = [Double]()
+            var allR = [Double]()
+            var allV = [Double]()
+            var allE = [Double]()
+
+            for await batch in group {
+                allShots.append(contentsOf: batch.shots)
+                allX.append(contentsOf: batch.xDeviations)
+                allY.append(contentsOf: batch.yDeviations)
+                allR.append(contentsOf: batch.radialDistances)
+                allV.append(contentsOf: batch.velocities)
+                allE.append(contentsOf: batch.energies)
+            }
+
+            return BatchOutput(
+                shots: allShots,
+                xDeviations: allX,
+                yDeviations: allY,
+                radialDistances: allR,
+                velocities: allV,
+                energies: allE
+            )
+        }
+
+        return computeResult(output: combinedOutput, targetDistance: targetDistance)
+    }
+
+    private struct BatchOutput: Sendable {
+        var shots: [MonteCarloShot]
+        var xDeviations: [Double]
+        var yDeviations: [Double]
+        var radialDistances: [Double]
+        var velocities: [Double]
+        var energies: [Double]
+    }
+
+    private static func runBatch(
+        count: Int,
+        seed: UInt64,
+        nominalV0: Double,
+        sdV0: Double,
+        nominalWind: Double,
+        sdWind: Double,
+        sdAngleRad: Double,
+        targetDistanceInches: Double,
+        baselineDropInches: Double,
+        baselineWindageInches: Double,
+        targetDistance: Measurement<UnitLength>,
+        dragFunction: DragFunction,
+        dragCoefficient: Double,
+        sightHeight: Measurement<UnitLength>,
+        zeroRange: Measurement<UnitLength>,
+        nominalWindAngle: Double,
+        weight: Measurement<UnitMass>,
+        atmosphere: Atmosphere?
+    ) -> BatchOutput {
+        var rng = CustomRNG(seed: seed)
+
+        var xDevs = [Double]()
+        var yDevs = [Double]()
+        var radials = [Double]()
+        var vels = [Double]()
+        var energ = [Double]()
+        var shotList = [MonteCarloShot]()
+
+        xDevs.reserveCapacity(count)
+        yDevs.reserveCapacity(count)
+        radials.reserveCapacity(count)
+        vels.reserveCapacity(count)
+        energ.reserveCapacity(count)
+        shotList.reserveCapacity(count)
+
+        for _ in 0..<count {
             let (g1, g2) = rng.nextGaussianPair()
             let (g3, g4) = rng.nextGaussianPair()
 
@@ -267,7 +431,6 @@ public struct MonteCarlo: Sendable {
                 let yPhysical = p.drop.converted(to: .inches).value
                 let xPhysical = p.windage.converted(to: .inches).value
 
-                // Combine ballistic trajectory delta with barrel/shooter angular dispersion
                 let yTotalDev = (yPhysical - baselineDropInches) + (shotAngularY * targetDistanceInches)
                 let xTotalDev = (xPhysical - baselineWindageInches) + (shotAngularX * targetDistanceInches)
                 let rDist = sqrt(xTotalDev * xTotalDev + yTotalDev * yTotalDev)
@@ -276,14 +439,13 @@ public struct MonteCarlo: Sendable {
                 let eEnd = p.energy.converted(to: .footPounds).value
                 let tEnd = p.travelTime.converted(to: .seconds).value
 
-                xDeviations.append(xTotalDev)
-                yDeviations.append(yTotalDev)
-                radialDistances.append(rDist)
-                velocities.append(vEnd)
-                energies.append(eEnd)
-                times.append(tEnd)
+                xDevs.append(xTotalDev)
+                yDevs.append(yTotalDev)
+                radials.append(rDist)
+                vels.append(vEnd)
+                energ.append(eEnd)
 
-                shots.append(
+                shotList.append(
                     MonteCarloShot(
                         horizontalDeviation: Measurement(value: xTotalDev, unit: .inches),
                         verticalDeviation: Measurement(value: yTotalDev, unit: .inches),
@@ -296,7 +458,24 @@ public struct MonteCarlo: Sendable {
             }
         }
 
-        // Compute accelerated statistics using Apple Accelerate vDSP
+        return BatchOutput(
+            shots: shotList,
+            xDeviations: xDevs,
+            yDeviations: yDevs,
+            radialDistances: radials,
+            velocities: vels,
+            energies: energ
+        )
+    }
+
+    private static func computeResult(output: BatchOutput, targetDistance: Measurement<UnitLength>) -> MonteCarloResult {
+        let xDeviations = output.xDeviations
+        let yDeviations = output.yDeviations
+        let velocities = output.velocities
+        let energies = output.energies
+        let radialDistances = output.radialDistances
+        let shots = output.shots
+
         let meanX: Double
         let sdX: Double
         let minX: Double
@@ -341,7 +520,6 @@ public struct MonteCarlo: Sendable {
         meanE = energies.reduce(0.0, +) / Double(energies.count)
         #endif
 
-        // Radial percentiles for CEP (50%) and R95 (95%)
         let sortedRadials = radialDistances.sorted()
         let cepIndex = min(sortedRadials.count - 1, Int(Double(sortedRadials.count) * 0.50))
         let r95Index = min(sortedRadials.count - 1, Int(Double(sortedRadials.count) * 0.95))

@@ -357,8 +357,13 @@ public struct Solver4DOF: Sendable {
             ballistics.distances.append(point)
         }
 
-        let (_, initialSg, initialSd, initialYaw) = computeDerivatives(s: state)
+        let (initialDerivs, initialSg, initialSd, initialYaw) = computeDerivatives(s: state)
         emitPoint(s: state, sg: initialSg, sd: initialSd, yawRepose: initialYaw)
+
+        var currentK1: DormandPrince54.Derivatives4DOF? = initialDerivs
+        var prevSg = initialSg
+        var prevSd = initialSd
+        var prevYaw = initialYaw
 
         sampleIndex += 1
         nextSampleFeet = Double(sampleIndex) * stepFeet
@@ -373,12 +378,16 @@ public struct Solver4DOF: Sendable {
                 s: state,
                 dt: currentDt,
                 tolerance: tolerance,
+                k1: currentK1,
                 computeDerivatives: computeDerivatives
             )
 
             if stepRes.accepted {
                 let sPrev = state
                 let sNext = stepRes.nextState
+                let nextSg = stepRes.sg
+                let nextSd = stepRes.sd
+                let nextYaw = stepRes.yawRepose
 
                 while sNext.position.x >= nextSampleFeet {
                     let alpha = (nextSampleFeet - sPrev.position.x) / max(1e-12, sNext.position.x - sPrev.position.x)
@@ -394,8 +403,10 @@ public struct Solver4DOF: Sendable {
                         time: interpTime
                     )
 
-                    let (_, sg, sd, yaw) = computeDerivatives(s: interpState)
-                    emitPoint(s: interpState, sg: sg, sd: sd, yawRepose: yaw)
+                    let interpSg = prevSg + alpha * (nextSg - prevSg)
+                    let interpSd = prevSd + alpha * (nextSd - prevSd)
+                    let interpYaw = prevYaw + alpha * (nextYaw - prevYaw)
+                    emitPoint(s: interpState, sg: interpSg, sd: interpSd, yawRepose: interpYaw)
 
                     sampleIndex += 1
                     nextSampleFeet = Double(sampleIndex) * stepFeet
@@ -403,6 +414,10 @@ public struct Solver4DOF: Sendable {
                 }
 
                 state = sNext
+                currentK1 = stepRes.k7
+                prevSg = nextSg
+                prevSd = nextSd
+                prevYaw = nextYaw
             }
 
             currentDt = stepRes.nextDt

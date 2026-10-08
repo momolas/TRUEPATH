@@ -282,15 +282,29 @@ public struct Ballistics: Sendable, Equatable, Hashable {
         let count = validQueries.count
         let indices = validQueries.map { $0.queryIndex }
 
-        let dropsTable = distances.map { $0.drop.value }
-        let dropCorrTable = distances.map { $0.dropCorrection.value }
-        let windageTable = distances.map { $0.windage.value }
-        let windageCorrTable = distances.map { $0.windageCorrection.value }
-        let timeTable = distances.map { $0.travelTime.value }
-        let vTable = distances.map { $0.velocity.value }
-        let vxTable = distances.map { $0.velocityX.value }
-        let vyTable = distances.map { $0.velocityY.value }
-        let energyTable = distances.map { $0.energy.value }
+        let nDist = distances.count
+        var dropsTable = [Double](repeating: 0, count: nDist)
+        var dropCorrTable = [Double](repeating: 0, count: nDist)
+        var windageTable = [Double](repeating: 0, count: nDist)
+        var windageCorrTable = [Double](repeating: 0, count: nDist)
+        var timeTable = [Double](repeating: 0, count: nDist)
+        var vTable = [Double](repeating: 0, count: nDist)
+        var vxTable = [Double](repeating: 0, count: nDist)
+        var vyTable = [Double](repeating: 0, count: nDist)
+        var energyTable = [Double](repeating: 0, count: nDist)
+
+        for i in 0..<nDist {
+            let pt = distances[i]
+            dropsTable[i] = pt.drop.value
+            dropCorrTable[i] = pt.dropCorrection.value
+            windageTable[i] = pt.windage.value
+            windageCorrTable[i] = pt.windageCorrection.value
+            timeTable[i] = pt.travelTime.value
+            vTable[i] = pt.velocity.value
+            vxTable[i] = pt.velocityX.value
+            vyTable[i] = pt.velocityY.value
+            energyTable[i] = pt.energy.value
+        }
 
         var interpDrops = [Double](repeating: 0, count: count)
         var interpDropCorrs = [Double](repeating: 0, count: count)
@@ -464,4 +478,36 @@ public struct Ballistics: Sendable, Equatable, Hashable {
             maxRange: maxRange
         )
     }
+
+    // MARK: - DOPE Table Methods
+
+    /**
+     Generates a complete DOPE (Data On Previous Engagements) table covering all sampled points.
+     Provides symmetric MRAD (0.1 MIL) and MOA (1/4 & 1/8 MOA) corrections for both elevation and windage.
+
+     - Parameter speedOfSound: Ambient speed of sound for Mach calculations.
+     - Returns: Array of `DOPERow` structures for each sampled trajectory point.
+     */
+    public func dopeTable(
+        speedOfSound: Measurement<UnitSpeed> = Measurement(value: 1116.45, unit: .feetPerSecond)
+    ) -> [DOPERow] {
+        distances.map { $0.dopeRow(speedOfSound: speedOfSound) }
+    }
+
+    /**
+     Retrieves a single DOPE row interpolated at an arbitrary target distance.
+
+     - Parameters:
+       - distance: Target distance.
+       - speedOfSound: Ambient speed of sound.
+     - Returns: Interpolated `DOPERow` if distance is within trajectory bounds.
+     */
+    public func dopeRow(
+        at distance: Measurement<UnitLength>,
+        speedOfSound: Measurement<UnitSpeed> = Measurement(value: 1116.45, unit: .feetPerSecond)
+    ) -> DOPERow? {
+        guard let pt = getPoint(at: distance) else { return nil }
+        return pt.dopeRow(speedOfSound: speedOfSound)
+    }
 }
+

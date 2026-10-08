@@ -17,11 +17,16 @@ A high-performance Swift 6 port and modern evolution of the `libballistics` libr
   - Powder Temperature Sensitivity (`PowderSensitivity`)
   - Danger Space (`DangerSpace`) calculation
 - **Optics & Field Tools**:
+  - Symmetric DOPE Table (`dopeTable()`, `DOPERow`) with MRAD (0.1 MIL) and MOA (1/4 & 1/8 MOA) elevation & windage clicks
   - Direct Turret Click conversion (`1/4 MOA`, `1/8 MOA`, `0.1 MIL / MRAD`) on `Point`
   - Reticle Ranging & Subtensions (`Ranging`)
   - Mach flight regime detection (`isSupersonic`, `isTransonic`, `isSubsonic`)
   - Sectional density ($SD$), form factor ($i$), and ballistic coefficient reconstruction via `SectionalDensity`
+- **Monte Carlo Stochastic Dispersion**:
+  - Parallel multicore execution via `MonteCarlo.simulateAsync` with Apple Silicon `TaskGroup` scaling
+  - Hardware-accelerated statistics via Apple Accelerate (`vDSP`)
 - **Atmospheric corrections** (altitude, barometric pressure, temperature, relative humidity)
+- **Universal Apple Support**: iOS 18+, macOS 15+, watchOS 11+, tvOS 18+, visionOS 2+
 - **Type-Safe Units**: Native integration with Foundation `Measurement` (`UnitLength`, `UnitSpeed`, `UnitAngle`, `UnitMass`, `UnitEnergy`, `UnitPressure`, `UnitTemperature`, `UnitDuration`)
 - Concurrency-ready (`Sendable`, Swift 6 strict mode)
 

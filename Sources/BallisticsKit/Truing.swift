@@ -92,6 +92,12 @@ public struct Truing: Sendable, Equatable, Hashable {
 
             let computedMOA = point.dropCorrection.converted(to: .minutesOfAngle).value
 
+            if abs(computedMOA - targetMOA) < 1e-4 {
+                vLow = vMid
+                vHigh = vMid
+                break
+            }
+
             // Higher velocity -> less drop -> smaller drop correction (MOA)
             if computedMOA > targetMOA {
                 vLow = vMid
@@ -170,6 +176,12 @@ public struct Truing: Sendable, Equatable, Hashable {
             }
 
             let computedMOA = point.dropCorrection.converted(to: .minutesOfAngle).value
+
+            if abs(computedMOA - targetMOA) < 1e-4 {
+                bcLow = bcMid
+                bcHigh = bcMid
+                break
+            }
 
             // Higher BC -> less drag -> less drop -> smaller drop correction (MOA)
             if computedMOA > targetMOA {

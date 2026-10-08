@@ -158,6 +158,43 @@ public struct Point: Sendable, Equatable, Hashable {
         machNumber(speedOfSound: speedOfSound) < 0.8
     }
 
+    // MARK: - DOPE Table Generation
+
+    /// Generates a standardized DOPE row with symmetric MRAD and MOA adjustments for both elevation and windage.
+    public func dopeRow(
+        speedOfSound: Measurement<UnitSpeed> = Measurement(value: 1116.45, unit: .feetPerSecond)
+    ) -> DOPERow {
+        let elevMRAD = totalDropCorrection.converted(to: .milliradians).value
+        let elevMOA = totalDropCorrection.converted(to: .minutesOfAngle).value
+        let windMRAD = totalWindageCorrection.converted(to: .milliradians).value
+        let windMOA = totalWindageCorrection.converted(to: .minutesOfAngle).value
+
+        let m = machNumber(speedOfSound: speedOfSound)
+
+        return DOPERow(
+            range: range,
+            travelTime: travelTime,
+            velocity: velocity,
+            energy: energy,
+            drop: totalDrop,
+            elevationMRAD: elevMRAD,
+            elevationClicksPointOneMRAD: TurretClick.pointOneMRAD.clicks(for: totalDropCorrection),
+            elevationMOA: elevMOA,
+            elevationClicksQuarterMOA: TurretClick.oneFourthMOA.clicks(for: totalDropCorrection),
+            elevationClicksEighthMOA: TurretClick.oneEighthMOA.clicks(for: totalDropCorrection),
+            totalWindage: totalWindage,
+            windageMRAD: windMRAD,
+            windageClicksPointOneMRAD: TurretClick.pointOneMRAD.clicks(for: totalWindageCorrection),
+            windageMOA: windMOA,
+            windageClicksQuarterMOA: TurretClick.oneFourthMOA.clicks(for: totalWindageCorrection),
+            windageClicksEighthMOA: TurretClick.oneEighthMOA.clicks(for: totalWindageCorrection),
+            mach: m,
+            isSupersonic: m > 1.2,
+            isTransonic: m >= 0.8 && m <= 1.2,
+            isSubsonic: m < 0.8
+        )
+    }
+
     public init(
         range: Measurement<UnitLength>,
         drop: Measurement<UnitLength>,

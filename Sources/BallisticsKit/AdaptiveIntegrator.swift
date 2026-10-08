@@ -142,6 +142,30 @@ public struct DormandPrince54: Sendable {
         public var nextDt: Double
         public var errorRatio: Double
         public var accepted: Bool
+        public var k7: Derivatives4DOF
+        public var sg: Double
+        public var sd: Double
+        public var yawRepose: Double
+
+        public init(
+            nextState: State4DOF,
+            nextDt: Double,
+            errorRatio: Double,
+            accepted: Bool,
+            k7: Derivatives4DOF = Derivatives4DOF(velocity: .zero, acceleration: .zero, dp: 0),
+            sg: Double = 1.5,
+            sd: Double = 1.0,
+            yawRepose: Double = 0.0
+        ) {
+            self.nextState = nextState
+            self.nextDt = nextDt
+            self.errorRatio = errorRatio
+            self.accepted = accepted
+            self.k7 = k7
+            self.sg = sg
+            self.sd = sd
+            self.yawRepose = yawRepose
+        }
     }
 
     public typealias StepResult = StepResult4DOF
@@ -154,72 +178,80 @@ public struct DormandPrince54: Sendable {
         s: State4DOF,
         dt: Double,
         tolerance: IntegratorTolerance,
+        k1: Derivatives4DOF? = nil,
         computeDerivatives: (State4DOF) -> (derivs: Derivatives4DOF, sg: Double, sd: Double, yawRepose: Double)
     ) -> StepResult4DOF {
-        step4DOF(s: s, dt: dt, tolerance: tolerance, computeDerivatives: computeDerivatives)
+        step4DOF(s: s, dt: dt, tolerance: tolerance, k1: k1, computeDerivatives: computeDerivatives)
     }
 
     /**
      Executes a single adaptive step for 4-DOF Modified Point Mass (STANAG 4355) using Dormand-Prince 5(4).
+     Takes advantage of FSAL (First-Same-As-Last) by reusing previous accepted stage 7 derivatives as stage 1.
      */
     public static func step4DOF(
         s: State4DOF,
         dt: Double,
         tolerance: IntegratorTolerance,
+        k1: Derivatives4DOF? = nil,
         computeDerivatives: (State4DOF) -> (derivs: Derivatives4DOF, sg: Double, sd: Double, yawRepose: Double)
     ) -> StepResult4DOF {
-        // Stage 1
-        let (k1, _, _, _) = computeDerivatives(s)
+        // Stage 1: Evaluate if not provided via FSAL (First-Same-As-Last)
+        let k1Derivs: Derivatives4DOF
+        if let passedK1 = k1 {
+            k1Derivs = passedK1
+        } else {
+            k1Derivs = computeDerivatives(s).derivs
+        }
 
         // Stage 2
         let s2 = State4DOF(
-            position: s.position + (dt * a21) * k1.velocity,
-            velocity: s.velocity + (dt * a21) * k1.acceleration,
-            p: s.p + (dt * a21) * k1.dp,
+            position: s.position + (dt * a21) * k1Derivs.velocity,
+            velocity: s.velocity + (dt * a21) * k1Derivs.acceleration,
+            p: s.p + (dt * a21) * k1Derivs.dp,
             time: s.time + dt * a21
         )
         let (k2, _, _, _) = computeDerivatives(s2)
 
         // Stage 3
         let s3 = State4DOF(
-            position: s.position + dt * (a31 * k1.velocity + a32 * k2.velocity),
-            velocity: s.velocity + dt * (a31 * k1.acceleration + a32 * k2.acceleration),
-            p: s.p + dt * (a31 * k1.dp + a32 * k2.dp),
+            position: s.position + dt * (a31 * k1Derivs.velocity + a32 * k2.velocity),
+            velocity: s.velocity + dt * (a31 * k1Derivs.acceleration + a32 * k2.acceleration),
+            p: s.p + dt * (a31 * k1Derivs.dp + a32 * k2.dp),
             time: s.time + dt * (a31 + a32)
         )
         let (k3, _, _, _) = computeDerivatives(s3)
 
         // Stage 4
         let s4 = State4DOF(
-            position: s.position + dt * (a41 * k1.velocity + a42 * k2.velocity + a43 * k3.velocity),
-            velocity: s.velocity + dt * (a41 * k1.acceleration + a42 * k2.acceleration + a43 * k3.acceleration),
-            p: s.p + dt * (a41 * k1.dp + a42 * k2.dp + a43 * k3.dp),
+            position: s.position + dt * (a41 * k1Derivs.velocity + a42 * k2.velocity + a43 * k3.velocity),
+            velocity: s.velocity + dt * (a41 * k1Derivs.acceleration + a42 * k2.acceleration + a43 * k3.acceleration),
+            p: s.p + dt * (a41 * k1Derivs.dp + a42 * k2.dp + a43 * k3.dp),
             time: s.time + dt * (a41 + a42 + a43)
         )
         let (k4, _, _, _) = computeDerivatives(s4)
 
         // Stage 5
         let s5 = State4DOF(
-            position: s.position + dt * (a51 * k1.velocity + a52 * k2.velocity + a53 * k3.velocity + a54 * k4.velocity),
-            velocity: s.velocity + dt * (a51 * k1.acceleration + a52 * k2.acceleration + a53 * k3.acceleration + a54 * k4.acceleration),
-            p: s.p + dt * (a51 * k1.dp + a52 * k2.dp + a53 * k3.dp + a54 * k4.dp),
+            position: s.position + dt * (a51 * k1Derivs.velocity + a52 * k2.velocity + a53 * k3.velocity + a54 * k4.velocity),
+            velocity: s.velocity + dt * (a51 * k1Derivs.acceleration + a52 * k2.acceleration + a53 * k3.acceleration + a54 * k4.acceleration),
+            p: s.p + dt * (a51 * k1Derivs.dp + a52 * k2.dp + a53 * k3.dp + a54 * k4.dp),
             time: s.time + dt * (a51 + a52 + a53 + a54)
         )
         let (k5, _, _, _) = computeDerivatives(s5)
 
         // Stage 6
         let s6 = State4DOF(
-            position: s.position + dt * (a61 * k1.velocity + a62 * k2.velocity + a63 * k3.velocity + a64 * k4.velocity + a65 * k5.velocity),
-            velocity: s.velocity + dt * (a61 * k1.acceleration + a62 * k2.acceleration + a63 * k3.acceleration + a64 * k4.acceleration + a65 * k5.acceleration),
-            p: s.p + dt * (a61 * k1.dp + a62 * k2.dp + a63 * k3.dp + a64 * k4.dp + a65 * k5.dp),
+            position: s.position + dt * (a61 * k1Derivs.velocity + a62 * k2.velocity + a63 * k3.velocity + a64 * k4.velocity + a65 * k5.velocity),
+            velocity: s.velocity + dt * (a61 * k1Derivs.acceleration + a62 * k2.acceleration + a63 * k3.acceleration + a64 * k4.acceleration + a65 * k5.acceleration),
+            p: s.p + dt * (a61 * k1Derivs.dp + a62 * k2.dp + a63 * k3.dp + a64 * k4.dp + a65 * k5.dp),
             time: s.time + dt * (a61 + a62 + a63 + a64 + a65)
         )
         let (k6, _, _, _) = computeDerivatives(s6)
 
         // 5th-order primary state estimate
-        let pos5 = s.position + dt * (b1 * k1.velocity + b3 * k3.velocity + b4 * k4.velocity + b5 * k5.velocity + b6 * k6.velocity)
-        let vel5 = s.velocity + dt * (b1 * k1.acceleration + b3 * k3.acceleration + b4 * k4.acceleration + b5 * k5.acceleration + b6 * k6.acceleration)
-        let p5 = s.p + dt * (b1 * k1.dp + b3 * k3.dp + b4 * k4.dp + b5 * k5.dp + b6 * k6.dp)
+        let pos5 = s.position + dt * (b1 * k1Derivs.velocity + b3 * k3.velocity + b4 * k4.velocity + b5 * k5.velocity + b6 * k6.velocity)
+        let vel5 = s.velocity + dt * (b1 * k1Derivs.acceleration + b3 * k3.acceleration + b4 * k4.acceleration + b5 * k5.acceleration + b6 * k6.acceleration)
+        let p5 = s.p + dt * (b1 * k1Derivs.dp + b3 * k3.dp + b4 * k4.dp + b5 * k5.dp + b6 * k6.dp)
 
         let candidateState = State4DOF(
             position: pos5,
@@ -228,12 +260,12 @@ public struct DormandPrince54: Sendable {
             time: s.time + dt
         )
 
-        // Stage 7 (FSAL evaluation)
-        let (k7, _, _, _) = computeDerivatives(candidateState)
+        // Stage 7 (FSAL evaluation at candidate state)
+        let (k7, sg7, sd7, yaw7) = computeDerivatives(candidateState)
 
         // Error vector estimate E = y_5 - y_4 = dt * sum(e_i * k_i)
-        let errPosVec = dt * (e1 * k1.velocity + e3 * k3.velocity + e4 * k4.velocity + e5 * k5.velocity + e6 * k6.velocity + e7 * k7.velocity)
-        let errVelVec = dt * (e1 * k1.acceleration + e3 * k3.acceleration + e4 * k4.acceleration + e5 * k5.acceleration + e6 * k6.acceleration + e7 * k7.acceleration)
+        let errPosVec = dt * (e1 * k1Derivs.velocity + e3 * k3.velocity + e4 * k4.velocity + e5 * k5.velocity + e6 * k6.velocity + e7 * k7.velocity)
+        let errVelVec = dt * (e1 * k1Derivs.acceleration + e3 * k3.acceleration + e4 * k4.acceleration + e5 * k5.acceleration + e6 * k6.acceleration + e7 * k7.acceleration)
 
         let posNorm = simd_length(pos5)
         let velNorm = simd_length(vel5)
@@ -267,7 +299,11 @@ public struct DormandPrince54: Sendable {
             nextState: candidateState,
             nextDt: clampedNextDt,
             errorRatio: errorRatio,
-            accepted: accepted
+            accepted: accepted,
+            k7: k7,
+            sg: sg7,
+            sd: sd7,
+            yawRepose: yaw7
         )
     }
 }

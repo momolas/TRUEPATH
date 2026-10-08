@@ -98,3 +98,34 @@ import Testing
     #expect(abs(r1.verticalSD.value - r2.verticalSD.value) < 1e-9)
     #expect(abs(r1.cep50.value - r2.cep50.value) < 1e-9)
 }
+
+@Test func monteCarloAsyncSimulation() async {
+    let dispersion = MonteCarloDispersion(
+        muzzleVelocitySD: Measurement(value: 12, unit: .feetPerSecond),
+        windSpeedSD: Measurement(value: 2.0, unit: .milesPerHour),
+        shooterAngularSD: Measurement(value: 0.35, unit: .minutesOfAngle)
+    )
+
+    let result = await MonteCarlo.simulateAsync(
+        shotCount: 60,
+        targetDistance: Measurement(value: 500, unit: .yards),
+        dispersion: dispersion,
+        dragFunction: .g7,
+        dragCoefficient: 0.265,
+        nominalVelocity: Measurement(value: 2750, unit: .feetPerSecond),
+        sightHeight: Measurement(value: 1.5, unit: .inches),
+        zeroRange: Measurement(value: 100, unit: .yards),
+        nominalWindSpeed: Measurement(value: 8, unit: .milesPerHour),
+        nominalWindAngle: 90,
+        weight: Measurement(value: 175, unit: .grains),
+        randomSeed: 12345
+    )
+
+    #expect(result.sampleCount == 60)
+    #expect(result.shots.count == 60)
+    #expect(result.horizontalSD.value > 0)
+    #expect(result.verticalSD.value > 0)
+    #expect(result.cep50.value > 0)
+    #expect(result.meanTerminalVelocity.value > 1200)
+}
+

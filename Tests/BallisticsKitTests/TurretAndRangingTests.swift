@@ -61,3 +61,41 @@ import Testing
     )
     #expect(abs(size.converted(to: .meters).value - 0.8) < 0.01)
 }
+
+@Test func dopeTableSymmetricClicks() {
+    let solution = Ballistics.solve(
+        dragCoefficient: 0.450,
+        initialVelocity: Measurement(value: 2700, unit: .feetPerSecond),
+        sightHeight: Measurement(value: 1.5, unit: .inches),
+        zeroRange: Measurement(value: 100, unit: .yards),
+        windSpeed: Measurement(value: 10, unit: .milesPerHour),
+        windAngle: 90,
+        distanceStep: Measurement(value: 100, unit: .yards),
+        maxRange: Measurement(value: 500, unit: .yards)
+    )
+
+    let table = solution.dopeTable()
+    #expect(!table.isEmpty)
+
+    // Inspect row at 500 yards
+    guard let row500 = solution.dopeRow(at: Measurement(value: 500, unit: .yards)) else {
+        #expect(Bool(false), "DOPE row at 500 yards must exist")
+        return
+    }
+
+    #expect(row500.elevationMOA > 5.0)
+    #expect(row500.elevationMRAD > 1.5)
+    #expect(row500.elevationClicksPointOneMRAD > 0)
+    #expect(row500.elevationClicksQuarterMOA > 0)
+    #expect(row500.elevationClicksEighthMOA == row500.elevationClicksQuarterMOA * 2 || abs(row500.elevationClicksEighthMOA - row500.elevationClicksQuarterMOA * 2) <= 1)
+
+    #expect(row500.windageMOA > 0)
+    #expect(row500.windageMRAD > 0)
+    #expect(row500.windageClicksPointOneMRAD > 0)
+    #expect(row500.windageClicksQuarterMOA > 0)
+    #expect(row500.windageClicksEighthMOA > 0)
+
+    #expect(row500.mach > 1.0)
+    #expect(row500.isSupersonic || row500.isTransonic)
+}
+
