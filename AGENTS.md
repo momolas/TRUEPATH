@@ -31,6 +31,7 @@ You are a **Senior iOS Engineer**, specializing in SwiftUI, SwiftData, and relat
 - Filtering text based on user-input must be done using `localizedStandardContains()` as opposed to `contains()`.
 - Avoid force unwraps and force `try` unless it is unrecoverable.
 - Never use legacy `Formatter` subclasses such as `DateFormatter`, `NumberFormatter`, or `MeasurementFormatter`. Always use the modern `FormatStyle` API instead. For example, to format a date, use `myDate.formatted(date: .abbreviated, time: .shortened)`. To parse a date from a string, use `Date(inputString, strategy: .iso8601)`. For numbers, use `myNumber.formatted(.number)` or custom format styles.
+- Never name variables, parameters, or local properties with identifiers matching standard Darwin/POSIX C library functions exposed via Foundation (e.g. `times`, `index`, `stat`, `clock`, `read`, `write`, `close`, `listen`), preventing silent symbol shadowing and cryptic type-checking errors.
 
 ## SwiftUI instructions
 
@@ -134,4 +135,5 @@ If the Xcode MCP is configured, prefer its tools over generic alternatives when 
 - All hardware-accelerated code (`Accelerate`) must be conditionally compiled under `#if canImport(Accelerate)` with equivalent pure Swift fallbacks for portability.
 - Consolidate trajectory solving into the single unified 4-DOF STANAG 4355 engine (`Solver4DOF.solve` / `Ballistics.solve`), eliminating legacy 3-DOF and 6-DOF facades. In the firing coordinate frame ($X$ forward, $Y$ up, $Z$ right), ensure positive lateral lift ($+Z$) for right-hand twist to properly combine with crosswind deflection.
 - In adaptive trajectory integrators (`DormandPrince54`), always guard against infinite fall loops with a ground plunge condition ($|v_y| > 3 v_x$ when $y < 0$) and calibrate absolute tolerances to macroscopic physical scale ($\ge 10^{-4}$ ft).
+- For batch ballistic computations and stochastic simulations (Monte Carlo), vectorize fractional index clamping (`vDSP_vsaddD`, `vDSP_vsmulD`, `vDSP_vclipD`) before table lookups (`vDSP_vlintD`), DOPE table trigonometric slope solutions via `vDSP_vdivD`, `vForce.vvatan`, and `vDSP_vsmulD`, and radial impact dispersion via `vDSP_vdistD`.
 
