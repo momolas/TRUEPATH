@@ -25,7 +25,16 @@ A high-performance Swift 6 port and modern evolution of the `libballistics` libr
 - **Monte Carlo Stochastic Dispersion**:
   - Parallel multicore execution via `MonteCarlo.simulateAsync` with Apple Silicon `TaskGroup` scaling
   - Hardware-accelerated statistics via Apple Accelerate (`vDSP`)
-- **Atmospheric corrections** (altitude, barometric pressure, temperature, relative humidity)
+- **Weapon Employment Zone (WEZ) & Target Hit Probability**:
+  - Evaluation of hit probability on geometric shapes (`TargetGeometry.circle`, `.rectangle`, `.ipscSilhouette`, `.natoSilhouette`)
+  - Uncertainty sensitivity budget breakdown (rangefinding, wind reading, muzzle velocity SD, shooter mechanical precision)
+- **Rifle Cant Error**: Modeling of optical reticle rotation and lateral/vertical displacement induced by weapon cant angle (`RifleCant`)
+- **Atmospheric Boundary Layer Wind Profiles**: Real-time continuous integration of Hellman power-law wind gradients and segmented downrange wind zones in 4-DOF trajectories (`WindProfile`)
+- **Density Altitude (DA) & Station Pressure**: Support for field barometric altimetry and uncorrected station pressure sensors (e.g. Kestrel 5700, Apple Watch)
+- **Didion Lag Time**: Pure aerodynamic measure of wind susceptibility ($t_{\text{lag}} = t - x/V_0$)
+- **Physical Aerodynamic Jump (Robert L. McCoy)**: Exact formulation based on crosswind velocity, lift-to-pitching moment ratio, axial inertia, and spin kinematics
+- **Terminal Ballistics**: Matunas Optimal Game Weight (OGW) and Taylor Knockout Factor (TKOF) metrics
+- **Range Safety & Ricochet Physics**: Absolute maximum range calculation ($R_{\text{max}}$ at optimal angle ~33°) and critical surface ricochet angles (water, soil, turf, concrete, steel)
 - **Universal Apple Support**: iOS 18+, macOS 15+, watchOS 11+, tvOS 18+, visionOS 2+
 - **Type-Safe Units**: Native integration with Foundation `Measurement` (`UnitLength`, `UnitSpeed`, `UnitAngle`, `UnitMass`, `UnitEnergy`, `UnitPressure`, `UnitTemperature`, `UnitDuration`)
 - Concurrency-ready (`Sendable`, Swift 6 strict mode)
@@ -243,4 +252,70 @@ let cdm = CustomDragModel(dataPoints: [
 let machQueries = [0.7, 0.95, 1.1, 1.5]
 let batchCd = cdm.dragCoefficients(atMachArray: machQueries)
 ```
+
+### 11. Weapon Employment Zone (WEZ) & Target Hit Probability
+
+Evaluate hit percentage on realistic steel plates or NATO silhouettes and identify limiting factors:
+
+```swift
+let target = TargetGeometry.natoSilhouette(type: .typeE)
+let analysis = WEZAnalysis.analyze(
+    shotCount: 200,
+    targetDistance: Measurement(value: 800, unit: .yards),
+    target: target,
+    dragFunction: .g7,
+    dragCoefficient: 0.265,
+    nominalVelocity: Measurement(value: 2750, unit: .feetPerSecond),
+    sightHeight: Measurement(value: 1.5, unit: .inches),
+    zeroRange: Measurement(value: 100, unit: .yards),
+    nominalWindSpeed: Measurement(value: 7, unit: .milesPerHour)
+)
+
+print("Baseline Hit Probability: \(analysis.baselineHitProbability)%")
+print("Primary Limiting Factor: \(analysis.primaryLimitingFactor)")
+```
+
+### 12. Rifle Cant Error (Bryan Litz Model)
+
+Compute angular elevation loss and lateral point of impact displacement caused by cant:
+
+```swift
+let cantAngle = Measurement(value: 3.0, unit: .degrees) // 3° cant to the right
+let cantError = point.cantError(angle: cantAngle)
+let linearShift = point.linearCantShift(angle: cantAngle)
+
+print("Elevation Loss: \(cantError.elevationError)")
+print("Horizontal Drift: \(cantError.windageError)")
+print("Linear Impact Shift: \(linearShift.horizontalShift) right, \(linearShift.verticalShift) low")
+```
+
+### 13. Density Altitude (DA) & Kestrel Station Pressure
+
+Compute Density Altitude or instantiate environmental conditions from direct station sensors:
+
+```swift
+// Direct station pressure from Kestrel 5700
+let kestrelAtmosphere = Atmosphere.fromStationPressure(
+    stationPressure: Measurement(value: 24.85, unit: .inchesOfMercury),
+    temperature: Measurement(value: 82, unit: .fahrenheit)
+)
+print("Equivalent Density Altitude: \(kestrelAtmosphere.densityAltitude.converted(to: .feet))")
+```
+
+### 14. Maximum Range & Range Safety (Beat Kneubuehl Model)
+
+Determine the outer danger perimeter and optimal launch angle for shooting range design:
+
+```swift
+let maxRangeResult = SafetyBallistics.calculateMaximumRange(
+    dragFunction: .g1,
+    dragCoefficient: 0.450,
+    initialVelocity: Measurement(value: 2650, unit: .feetPerSecond)
+)
+
+print("Absolute Maximum Range: \(maxRangeResult.maximumRange.converted(to: .yards))")
+print("Optimal Launch Angle: \(maxRangeResult.optimalLaunchAngle)")
+print("Vertex Altitude (Apogee): \(maxRangeResult.vertexAltitude.converted(to: .feet))")
+```
+
 

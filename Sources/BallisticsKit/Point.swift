@@ -195,6 +195,37 @@ public struct Point: Sendable, Equatable, Hashable {
         )
     }
 
+    // MARK: - Didion Lag Time & Rifle Cant Extensions
+
+    /// Computes Didion's aerodynamic lag time: t_lag = t - x / V0.
+    /// In Didion's classical wind deflection theorem, crosswind deflection is D = W * t_lag.
+    public func lagTime(initialVelocity: Measurement<UnitSpeed>) -> Measurement<UnitDuration> {
+        let tSec = travelTime.converted(to: .seconds).value
+        let xFeet = range.converted(to: .feet).value
+        let v0FPS = max(1.0, initialVelocity.converted(to: .feetPerSecond).value)
+        let lag = max(0.0, tSec - (xFeet / v0FPS))
+        return Measurement(value: lag, unit: .seconds)
+    }
+
+    /// Computes the angular error in elevation and windage caused by rifle cant.
+    public func cantError(angle: Measurement<UnitAngle>) -> (elevationError: Measurement<UnitAngle>, windageError: Measurement<UnitAngle>) {
+        RifleCant.angularError(
+            dropCorrection: totalDropCorrection,
+            windageCorrection: totalWindageCorrection,
+            cantAngle: angle
+        )
+    }
+
+    /// Computes the linear shift in impact position on target caused by rifle cant.
+    public func linearCantShift(angle: Measurement<UnitAngle>) -> (verticalShift: Measurement<UnitLength>, horizontalShift: Measurement<UnitLength>) {
+        RifleCant.linearImpactShift(
+            targetDistance: range,
+            dropCorrection: totalDropCorrection,
+            windageCorrection: totalWindageCorrection,
+            cantAngle: angle
+        )
+    }
+
     public init(
         range: Measurement<UnitLength>,
         drop: Measurement<UnitLength>,

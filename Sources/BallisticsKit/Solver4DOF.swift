@@ -29,6 +29,7 @@ public struct Solver4DOF: Sendable {
         atmosphere: Atmosphere? = nil,
         windSpeed: Measurement<UnitSpeed> = Measurement(value: 0, unit: .milesPerHour),
         windAngle: Double = 0,
+        windProfile: WindProfile? = nil,
         weight: Measurement<UnitMass> = Measurement<UnitMass>(value: 175, unit: .grains),
         distanceStep: Measurement<UnitLength> = Measurement(value: 1, unit: .yards),
         twist: Measurement<UnitLength>? = nil,
@@ -72,6 +73,7 @@ public struct Solver4DOF: Sendable {
             atmosphere: atmosphere,
             windSpeed: windSpeed,
             windAngle: windAngle,
+            windProfile: windProfile,
             latitude: latitude,
             azimuth: azimuth,
             distanceStep: distanceStep,
@@ -98,6 +100,7 @@ public struct Solver4DOF: Sendable {
         atmosphere: Atmosphere? = nil,
         windSpeed: Measurement<UnitSpeed> = Measurement(value: 0, unit: .milesPerHour),
         windAngle: Double = 0,
+        windProfile: WindProfile? = nil,
         latitude: Measurement<UnitAngle>? = nil,
         azimuth: Measurement<UnitAngle>? = nil,
         distanceStep: Measurement<UnitLength> = Measurement(value: 1, unit: .yards),
@@ -197,7 +200,19 @@ public struct Solver4DOF: Sendable {
         // STANAG 4355 differential equations of motion
         func computeDerivatives(s: State4DOF) -> (derivs: DormandPrince54.Derivatives4DOF, sg: Double, sd: Double, yawRepose: Double) {
             // Apparent velocity relative to wind: w = v - v_wind
-            let windDelta = simd_double3(windHeadX, 0, -windCrossZ)
+            let windDelta: simd_double3
+            if let profile = windProfile {
+                let currentRangeFeet = Measurement(value: max(0.0, s.position.x), unit: UnitLength.feet)
+                let currentHeightFeet = Measurement(value: max(0.5, s.position.y - initialYFeet), unit: UnitLength.feet)
+                let (wSpeed, wAngle) = profile.wind(atRange: currentRangeFeet, heightAboveGround: currentHeightFeet)
+                let wFPS = wSpeed.converted(to: .feetPerSecond).value
+                let wRad = Math.degToRad(wAngle)
+                let dynamicHeadX = wFPS * cos(wRad)
+                let dynamicCrossZ = wFPS * sin(wRad)
+                windDelta = simd_double3(dynamicHeadX, 0, -dynamicCrossZ)
+            } else {
+                windDelta = simd_double3(windHeadX, 0, -windCrossZ)
+            }
             let wVec = s.velocity + windDelta
             let wMag = max(10.0, simd_length(wVec))
 

@@ -146,4 +146,58 @@ public struct Atmosphere: Sendable, Equatable, Hashable {
             relativeHumidity: relativeHumidity
         )
     }
+
+    // MARK: - Density Altitude & Station Pressure
+
+    /// Computes the Density Altitude (DA) corresponding to this atmospheric state.
+    /// Density Altitude is the altitude in the International Standard Atmosphere (ISA) where air density equals ambient air density.
+    public var densityAltitude: Measurement<UnitLength> {
+        let pInHg = pressure.converted(to: .inchesOfMercury).value
+        let tC = temperature.converted(to: .celsius).value
+
+        // Pressure altitude: Hp = 145366.45 * (1 - (P / 29.921)^0.190284) ft
+        let pressureAltFeet = 145366.45 * (1.0 - pow(max(1e-4, pInHg / 29.921), 0.190284))
+        // ISA standard temperature at pressure altitude: T_ISA = 15°C - 0.0019812 * Hp
+        let isaTempC = 15.0 - (0.0019812 * pressureAltFeet)
+        // Standard density altitude approximation: DA = Hp + 118.8 * (T_ambient - T_ISA)
+        let daFeet = pressureAltFeet + 118.8 * (tC - isaTempC)
+        return Measurement(value: daFeet, unit: .feet)
+    }
+
+    /// Initializes an `Atmosphere` directly from a specified Density Altitude (DA).
+    /// Assumes standard ISA atmosphere at that density altitude (relative humidity defaults to 0.5).
+    public static func fromDensityAltitude(
+        _ densityAltitude: Measurement<UnitLength>,
+        relativeHumidity: Double = 0.5
+    ) -> Atmosphere {
+        let daFeet = densityAltitude.converted(to: .feet).value
+        // In standard ISA, temperature at DA: T = 59°F - 0.00356616 * DA
+        let tempF = 59.0 - 0.00356616 * daFeet
+        // Standard ISA pressure: P = 29.921 * (1 - 0.00356616 * DA / 518.67)^5.25588
+        let term = max(1e-4, 1.0 - (0.00356616 * daFeet) / 518.67)
+        let pInHg = 29.921 * pow(term, 5.25588)
+        return Atmosphere(
+            altitude: densityAltitude,
+            pressure: Measurement(value: pInHg, unit: .inchesOfMercury),
+            temperature: Measurement(value: tempF, unit: .fahrenheit),
+            relativeHumidity: relativeHumidity
+        )
+    }
+
+    /// Initializes an `Atmosphere` from absolute Station Pressure (e.g., direct Kestrel 5700 or Apple Watch barometric sensor).
+    /// Station pressure is the actual uncorrected ambient pressure at the current location.
+    public static func fromStationPressure(
+        stationPressure: Measurement<UnitPressure>,
+        temperature: Measurement<UnitTemperature>,
+        altitude: Measurement<UnitLength> = Measurement(value: 0, unit: .meters),
+        relativeHumidity: Double = 0.5
+    ) -> Atmosphere {
+        Atmosphere(
+            altitude: altitude,
+            pressure: stationPressure,
+            temperature: temperature,
+            relativeHumidity: relativeHumidity
+        )
+    }
 }
+
