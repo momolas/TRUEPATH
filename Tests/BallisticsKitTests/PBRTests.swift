@@ -51,6 +51,19 @@ import Testing
         #expect(pbr.nearZeroYards > 0)
         #expect(pbr.farZeroYards > pbr.nearZeroYards)
         #expect(pbr.maxPBRYards > pbr.farZeroYards)
+
+        // Typed Measurement accessors
+        #expect(pbr.nearZero.value == Double(pbr.nearZeroYards))
+        #expect(pbr.farZero.value == Double(pbr.farZeroYards))
+        #expect(pbr.minPBR.value == Double(pbr.minPBRYards))
+        #expect(pbr.maxPBR.value == Double(pbr.maxPBRYards))
+        #expect(pbr.sightInElevationOffset.unit == .inches)
+
+        // Codable test
+        let encoded = try JSONEncoder().encode(pbr)
+        let decoded = try JSONDecoder().decode(PBR.self, from: encoded)
+        #expect(decoded == pbr)
+
     case .failure(let error):
         Issue.record("PBR Measurement calculation failed: \(error)")
     }

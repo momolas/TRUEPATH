@@ -8,7 +8,7 @@
 import Foundation
 
 /// Represents the Point Blank Range (PBR) calculation results for a given vital zone target size.
-public struct PBR: Sendable, Equatable, Hashable {
+public struct PBR: Sendable, Equatable, Hashable, Codable {
 
     /// The near zero distance where the projectile intersects the line of sight on the way up (in yards).
     public let nearZeroYards: Int
@@ -24,6 +24,31 @@ public struct PBR: Sendable, Equatable, Hashable {
 
     /// The sight-in elevation offset at 100 yards (in hundredths of an inch, e.g. 250 = +2.5 inches).
     public let sightInAt100Yards: Int
+
+    /// The near zero distance as a typed Measurement.
+    public var nearZero: Measurement<UnitLength> {
+        Measurement(value: Double(nearZeroYards), unit: .yards)
+    }
+
+    /// The far zero distance as a typed Measurement.
+    public var farZero: Measurement<UnitLength> {
+        Measurement(value: Double(farZeroYards), unit: .yards)
+    }
+
+    /// The minimum point blank range as a typed Measurement.
+    public var minPBR: Measurement<UnitLength> {
+        Measurement(value: Double(minPBRYards), unit: .yards)
+    }
+
+    /// The maximum point blank range as a typed Measurement.
+    public var maxPBR: Measurement<UnitLength> {
+        Measurement(value: Double(maxPBRYards), unit: .yards)
+    }
+
+    /// The sight-in elevation offset at 100 yards as a typed Measurement.
+    public var sightInElevationOffset: Measurement<UnitLength> {
+        Measurement(value: Double(sightInAt100Yards) / 100.0, unit: .inches)
+    }
 
     public init(
         nearZeroYards: Int,

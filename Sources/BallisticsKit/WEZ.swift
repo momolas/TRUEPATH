@@ -9,7 +9,7 @@ import Foundation
 
 /// Target geometry models for Weapon Employment Zone (WEZ) and hit probability evaluation.
 /// Based on Bryan Litz's *Applied Ballistics for Long Range Shooting* (Chapter 16: "Weapon Employment Zone Analysis").
-public enum TargetGeometry: Sendable, Equatable {
+public enum TargetGeometry: Sendable, Equatable, Hashable, Codable {
     /// A circular target / steel gong of specified diameter.
     case circle(diameter: Measurement<UnitLength>)
 
@@ -22,13 +22,13 @@ public enum TargetGeometry: Sendable, Equatable {
     /// A military NATO silhouette target (e.g. NATO Type E).
     case natoSilhouette(type: NATOSilhouetteType = .typeE)
 
-    public enum IPSCZone: Sendable, Equatable {
+    public enum IPSCZone: String, Sendable, Equatable, Hashable, Codable, CaseIterable {
         case aZone
         case cZone
         case fullBody
     }
 
-    public enum NATOSilhouetteType: Sendable, Equatable {
+    public enum NATOSilhouetteType: String, Sendable, Equatable, Hashable, Codable, CaseIterable {
         case typeE // 0.5m x 1.0m (19.68" x 39.37")
         case headAndShoulders // 0.5m x 0.5m
     }
@@ -51,11 +51,13 @@ public enum TargetGeometry: Sendable, Equatable {
         switch self {
         case .circle(let diameter):
             let radiusInches = diameter.converted(to: .inches).value / 2.0
+            guard radiusInches > 0 else { return false }
             return (xInches * xInches + yInches * yInches) <= (radiusInches * radiusInches)
 
         case .rectangle(let width, let height):
             let halfW = width.converted(to: .inches).value / 2.0
             let halfH = height.converted(to: .inches).value / 2.0
+            guard halfW > 0, halfH > 0 else { return false }
             return xInches <= halfW && abs(yInches) <= halfH
 
         case .ipscSilhouette(let zone):
@@ -157,7 +159,7 @@ extension MonteCarloResult {
 // MARK: - WEZ Sensitivity & Uncertainty Budget Analysis
 
 /// Result of a Weapon Employment Zone (WEZ) uncertainty sensitivity analysis.
-public struct WEZAnalysisResult: Sendable, Equatable {
+public struct WEZAnalysisResult: Sendable, Equatable, Hashable, Codable {
     /// Baseline hit probability percentage (0% to 100%).
     public let baselineHitProbability: Double
 
@@ -178,9 +180,108 @@ public struct WEZAnalysisResult: Sendable, Equatable {
 
     /// Primary limiting uncertainty factor ("Range", "Wind", "Muzzle Velocity", or "Precision").
     public let primaryLimitingFactor: String
+
+    /// Public memberwise initializer conforming to SWIFT-042.
+    public init(
+        baselineHitProbability: Double,
+        target: TargetGeometry,
+        targetDistance: Measurement<UnitLength>,
+        rangeImpactProbability: Double,
+        windImpactProbability: Double,
+        velocityImpactProbability: Double,
+        primaryLimitingFactor: String
+    ) {
+        self.baselineHitProbability = baselineHitProbability
+        self.target = target
+        self.targetDistance = targetDistance
+        self.rangeImpactProbability = rangeImpactProbability
+        self.windImpactProbability = windImpactProbability
+        self.velocityImpactProbability = velocityImpactProbability
+        self.primaryLimitingFactor = primaryLimitingFactor
+    }
+
+    /// Normalized baseline hit rate in the range 0.0 ... 1.0 (for SwiftUI .percent format styles and Gauges).
+    public var baselineHitRate: Double { baselineHitProbability / 100.0 }
+
+    /// Normalized range impact rate in the range 0.0 ... 1.0.
+    public var rangeImpactRate: Double { rangeImpactProbability / 100.0 }
+
+    /// Normalized wind impact rate in the range 0.0 ... 1.0.
+    public var windImpactRate: Double { windImpactProbability / 100.0 }
+
+    /// Normalized muzzle velocity impact rate in the range 0.0 ... 1.0.
+    public var velocityImpactRate: Double { velocityImpactProbability / 100.0 }
+}
+
+/// Encapsulated input parameters for a Weapon Employment Zone (WEZ) analysis.
+public struct WEZInput: Sendable, Equatable, Hashable, Codable {
+    public var shotCount: Int
+    public var targetDistance: Measurement<UnitLength>
+    public var target: TargetGeometry
+    public var nominalDispersion: MonteCarloDispersion
+    public var dragFunction: DragFunction
+    public var dragCoefficient: Double
+    public var nominalVelocity: Measurement<UnitSpeed>
+    public var sightHeight: Measurement<UnitLength>
+    public var zeroRange: Measurement<UnitLength>
+    public var nominalWindSpeed: Measurement<UnitSpeed>
+    public var weight: Measurement<UnitMass>
+    public var atmosphere: Atmosphere?
+    public var randomSeed: UInt64
+
+    public init(
+        shotCount: Int = 150,
+        targetDistance: Measurement<UnitLength>,
+        target: TargetGeometry,
+        nominalDispersion: MonteCarloDispersion = MonteCarloDispersion(),
+        dragFunction: DragFunction = .g7,
+        dragCoefficient: Double,
+        nominalVelocity: Measurement<UnitSpeed>,
+        sightHeight: Measurement<UnitLength>,
+        zeroRange: Measurement<UnitLength>,
+        nominalWindSpeed: Measurement<UnitSpeed> = Measurement(value: 5, unit: .milesPerHour),
+        weight: Measurement<UnitMass> = Measurement(value: 175, unit: .grains),
+        atmosphere: Atmosphere? = nil,
+        randomSeed: UInt64 = 42
+    ) {
+        self.shotCount = shotCount
+        self.targetDistance = targetDistance
+        self.target = target
+        self.nominalDispersion = nominalDispersion
+        self.dragFunction = dragFunction
+        self.dragCoefficient = dragCoefficient
+        self.nominalVelocity = nominalVelocity
+        self.sightHeight = sightHeight
+        self.zeroRange = zeroRange
+        self.nominalWindSpeed = nominalWindSpeed
+        self.weight = weight
+        self.atmosphere = atmosphere
+        self.randomSeed = randomSeed
+    }
 }
 
 public struct WEZAnalysis: Sendable {
+
+    /**
+     Runs a complete Weapon Employment Zone (WEZ) analysis using an encapsulated `WEZInput` DTO.
+     */
+    public static func analyze(input: WEZInput) -> WEZAnalysisResult {
+        analyze(
+            shotCount: input.shotCount,
+            targetDistance: input.targetDistance,
+            target: input.target,
+            nominalDispersion: input.nominalDispersion,
+            dragFunction: input.dragFunction,
+            dragCoefficient: input.dragCoefficient,
+            nominalVelocity: input.nominalVelocity,
+            sightHeight: input.sightHeight,
+            zeroRange: input.zeroRange,
+            nominalWindSpeed: input.nominalWindSpeed,
+            weight: input.weight,
+            atmosphere: input.atmosphere,
+            randomSeed: input.randomSeed
+        )
+    }
 
     /**
      Runs a complete Weapon Employment Zone (WEZ) analysis following Bryan Litz's methodology.
@@ -297,6 +398,144 @@ public struct WEZAnalysis: Sendable {
             windImpactProbability: windProb,
             velocityImpactProbability: v0Prob,
             primaryLimitingFactor: primaryFactor
+        )
+    }
+
+    /**
+     Asynchronously executes a complete WEZ analysis across multi-core Apple Silicon using structured concurrency.
+     Evaluates the four uncertainty branches (baseline, wind, velocity, range) in parallel tasks without blocking the main actor.
+     */
+    public static func analyzeAsync(
+        shotCount: Int = 150,
+        targetDistance: Measurement<UnitLength>,
+        target: TargetGeometry,
+        nominalDispersion: MonteCarloDispersion = MonteCarloDispersion(),
+        dragFunction: DragFunction = .g7,
+        dragCoefficient: Double,
+        nominalVelocity: Measurement<UnitSpeed>,
+        sightHeight: Measurement<UnitLength>,
+        zeroRange: Measurement<UnitLength>,
+        nominalWindSpeed: Measurement<UnitSpeed> = Measurement(value: 5, unit: .milesPerHour),
+        weight: Measurement<UnitMass> = Measurement(value: 175, unit: .grains),
+        atmosphere: Atmosphere? = nil,
+        randomSeed: UInt64 = 42
+    ) async -> WEZAnalysisResult {
+        var windDegradedDisp = nominalDispersion
+        windDegradedDisp.windSpeedSD = windDegradedDisp.windSpeedSD * 2.0
+
+        var v0DegradedDisp = nominalDispersion
+        v0DegradedDisp.muzzleVelocitySD = v0DegradedDisp.muzzleVelocitySD * 2.0
+
+        let rangeOffset = targetDistance * 1.025
+
+        async let baselineTask = MonteCarlo.simulateAsync(
+            shotCount: shotCount,
+            targetDistance: targetDistance,
+            dispersion: nominalDispersion,
+            dragFunction: dragFunction,
+            dragCoefficient: dragCoefficient,
+            nominalVelocity: nominalVelocity,
+            sightHeight: sightHeight,
+            zeroRange: zeroRange,
+            nominalWindSpeed: nominalWindSpeed,
+            weight: weight,
+            atmosphere: atmosphere,
+            randomSeed: randomSeed
+        )
+
+        async let windTask = MonteCarlo.simulateAsync(
+            shotCount: shotCount,
+            targetDistance: targetDistance,
+            dispersion: windDegradedDisp,
+            dragFunction: dragFunction,
+            dragCoefficient: dragCoefficient,
+            nominalVelocity: nominalVelocity,
+            sightHeight: sightHeight,
+            zeroRange: zeroRange,
+            nominalWindSpeed: nominalWindSpeed,
+            weight: weight,
+            atmosphere: atmosphere,
+            randomSeed: randomSeed
+        )
+
+        async let v0Task = MonteCarlo.simulateAsync(
+            shotCount: shotCount,
+            targetDistance: targetDistance,
+            dispersion: v0DegradedDisp,
+            dragFunction: dragFunction,
+            dragCoefficient: dragCoefficient,
+            nominalVelocity: nominalVelocity,
+            sightHeight: sightHeight,
+            zeroRange: zeroRange,
+            nominalWindSpeed: nominalWindSpeed,
+            weight: weight,
+            atmosphere: atmosphere,
+            randomSeed: randomSeed
+        )
+
+        async let rangeTask = MonteCarlo.simulateAsync(
+            shotCount: shotCount,
+            targetDistance: rangeOffset,
+            dispersion: nominalDispersion,
+            dragFunction: dragFunction,
+            dragCoefficient: dragCoefficient,
+            nominalVelocity: nominalVelocity,
+            sightHeight: sightHeight,
+            zeroRange: zeroRange,
+            nominalWindSpeed: nominalWindSpeed,
+            weight: weight,
+            atmosphere: atmosphere,
+            randomSeed: randomSeed
+        )
+
+        let (baseline, windSim, v0Sim, rangeSim) = await (baselineTask, windTask, v0Task, rangeTask)
+        let baselineHitProb = baseline.hitProbability(for: target)
+        let windProb = windSim.hitProbability(for: target)
+        let v0Prob = v0Sim.hitProbability(for: target)
+        let rangeProb = rangeSim.hitProbability(for: target)
+
+        let windLoss = baselineHitProb - windProb
+        let v0Loss = baselineHitProb - v0Prob
+        let rangeLoss = baselineHitProb - rangeProb
+
+        let primaryFactor: String
+        if windLoss >= v0Loss && windLoss >= rangeLoss {
+            primaryFactor = "Wind Estimation"
+        } else if rangeLoss >= windLoss && rangeLoss >= v0Loss {
+            primaryFactor = "Rangefinding Uncertainty"
+        } else {
+            primaryFactor = "Muzzle Velocity Consistency"
+        }
+
+        return WEZAnalysisResult(
+            baselineHitProbability: baselineHitProb,
+            target: target,
+            targetDistance: targetDistance,
+            rangeImpactProbability: rangeProb,
+            windImpactProbability: windProb,
+            velocityImpactProbability: v0Prob,
+            primaryLimitingFactor: primaryFactor
+        )
+    }
+
+    /**
+     Asynchronously executes a complete WEZ analysis using an encapsulated `WEZInput` DTO.
+     */
+    public static func analyzeAsync(input: WEZInput) async -> WEZAnalysisResult {
+        await analyzeAsync(
+            shotCount: input.shotCount,
+            targetDistance: input.targetDistance,
+            target: input.target,
+            nominalDispersion: input.nominalDispersion,
+            dragFunction: input.dragFunction,
+            dragCoefficient: input.dragCoefficient,
+            nominalVelocity: input.nominalVelocity,
+            sightHeight: input.sightHeight,
+            zeroRange: input.zeroRange,
+            nominalWindSpeed: input.nominalWindSpeed,
+            weight: input.weight,
+            atmosphere: input.atmosphere,
+            randomSeed: input.randomSeed
         )
     }
 }

@@ -16,7 +16,7 @@ struct WEZTests {
         // Circle 10 inches diameter (radius 5 inches)
         let circle = TargetGeometry.circle(diameter: Measurement(value: 10, unit: .inches))
         #expect(circle.contains(horizontal: Measurement(value: 3, unit: .inches), vertical: Measurement(value: 3, unit: .inches)))
-        #expect(!circle.contains(horizontal: Measurement(value: 6, unit: .inches), vertical: Measurement(value: 0, unit: .inches)))
+        #expect(circle.contains(horizontal: Measurement(value: 6, unit: .inches), vertical: Measurement(value: 0, unit: .inches)) == false)
 
         // Rectangle 12 x 18 inches (half width 6, half height 9)
         let rect = TargetGeometry.rectangle(
@@ -24,12 +24,12 @@ struct WEZTests {
             height: Measurement(value: 18, unit: .inches)
         )
         #expect(rect.contains(horizontal: Measurement(value: 5.5, unit: .inches), vertical: Measurement(value: 8.5, unit: .inches)))
-        #expect(!rect.contains(horizontal: Measurement(value: 6.5, unit: .inches), vertical: Measurement(value: 8.5, unit: .inches)))
+        #expect(rect.contains(horizontal: Measurement(value: 6.5, unit: .inches), vertical: Measurement(value: 8.5, unit: .inches)) == false)
 
         // NATO Type E silhouette
         let nato = TargetGeometry.natoSilhouette(type: .typeE)
         #expect(nato.contains(horizontal: Measurement(value: 8, unit: .inches), vertical: Measurement(value: 15, unit: .inches)))
-        #expect(!nato.contains(horizontal: Measurement(value: 12, unit: .inches), vertical: Measurement(value: 0, unit: .inches)))
+        #expect(nato.contains(horizontal: Measurement(value: 12, unit: .inches), vertical: Measurement(value: 0, unit: .inches)) == false)
     }
 
     @Test
@@ -84,6 +84,33 @@ struct WEZTests {
         )
 
         #expect(analysis.baselineHitProbability > 0.0)
-        #expect(!analysis.primaryLimitingFactor.isEmpty)
+        #expect(analysis.baselineHitRate > 0.0)
+        #expect(analysis.baselineHitRate <= 1.0)
+        #expect(analysis.primaryLimitingFactor.isEmpty == false)
+    }
+
+    @Test
+    func testWEZAnalysisAsyncAndDTO() async {
+        let target = TargetGeometry.circle(diameter: Measurement(value: 15, unit: .inches))
+        let input = WEZInput(
+            shotCount: 40,
+            targetDistance: Measurement(value: 400, unit: .yards),
+            target: target,
+            dragFunction: .g7,
+            dragCoefficient: 0.280,
+            nominalVelocity: Measurement(value: 2700, unit: .feetPerSecond),
+            sightHeight: Measurement(value: 1.5, unit: .inches),
+            zeroRange: Measurement(value: 100, unit: .yards),
+            nominalWindSpeed: Measurement(value: 5, unit: .milesPerHour),
+            randomSeed: 42
+        )
+
+        let asyncResult = await WEZAnalysis.analyzeAsync(input: input)
+        #expect(asyncResult.baselineHitProbability >= 0.0)
+        #expect(asyncResult.baselineHitRate >= 0.0)
+        #expect(asyncResult.baselineHitRate <= 1.0)
+        #expect(asyncResult.velocityImpactRate <= 1.0)
+        #expect(asyncResult.windImpactRate <= 1.0)
+        #expect(asyncResult.rangeImpactRate <= 1.0)
     }
 }

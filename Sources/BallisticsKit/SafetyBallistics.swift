@@ -13,7 +13,7 @@ import Foundation
 public struct SafetyBallistics: Sendable {
 
     /// Result of an absolute maximum range calculation.
-    public struct MaximumRangeResult: Sendable, Equatable {
+    public struct MaximumRangeResult: Sendable, Equatable, Hashable, Codable {
         /// The absolute maximum downrange distance the projectile can achieve at ground level.
         public let maximumRange: Measurement<UnitLength>
 
@@ -28,10 +28,36 @@ public struct SafetyBallistics: Sendable {
 
         /// Remaining terminal velocity at ground impact.
         public let terminalVelocity: Measurement<UnitSpeed>
+
+        /// Public memberwise initializer conforming to SWIFT-042.
+        public init(
+            maximumRange: Measurement<UnitLength>,
+            optimalLaunchAngle: Measurement<UnitAngle>,
+            vertexAltitude: Measurement<UnitLength>,
+            totalFlightTime: Measurement<UnitDuration>,
+            terminalVelocity: Measurement<UnitSpeed>
+        ) {
+            self.maximumRange = maximumRange
+            self.optimalLaunchAngle = optimalLaunchAngle
+            self.vertexAltitude = vertexAltitude
+            self.totalFlightTime = totalFlightTime
+            self.terminalVelocity = terminalVelocity
+        }
+    }
+
+    /// Result of a ricochet assessment.
+    public struct RicochetEvaluation: Sendable, Equatable, Hashable, Codable {
+        public let willRicochet: Bool
+        public let residualVelocity: Measurement<UnitSpeed>
+
+        public init(willRicochet: Bool, residualVelocity: Measurement<UnitSpeed>) {
+            self.willRicochet = willRicochet
+            self.residualVelocity = residualVelocity
+        }
     }
 
     /// Surface types for ricochet critical angle and velocity retention estimation.
-    public enum RicochetSurface: Sendable, Equatable {
+    public enum RicochetSurface: String, Sendable, Equatable, Hashable, Codable, CaseIterable {
         case water
         case softSoil
         case hardGroundOrTurf
@@ -82,12 +108,25 @@ public struct SafetyBallistics: Sendable {
     ) -> (willRicochet: Bool, residualVelocity: Measurement<UnitSpeed>) {
         let angleDeg = impactAngle.converted(to: .degrees).value
         let critDeg = surface.criticalAngle.converted(to: .degrees).value
+        let vFPS = impactVelocity.converted(to: .feetPerSecond).value
 
-        let willRicochet = angleDeg <= critDeg
+        let willRicochet = angleDeg > 0.0 && angleDeg <= critDeg && vFPS > 0.0
         let ratio = willRicochet ? surface.retainedVelocityRatio : 0.0
         let resSpeed = impactVelocity * ratio
 
         return (willRicochet, resSpeed)
+    }
+
+    /**
+     Determines whether a bullet impacting a surface at a given angle will ricochet, returning a persistent `RicochetEvaluation` struct.
+     */
+    public static func evaluateRicochetDetailed(
+        impactAngle: Measurement<UnitAngle>,
+        impactVelocity: Measurement<UnitSpeed>,
+        surface: RicochetSurface
+    ) -> RicochetEvaluation {
+        let res = evaluateRicochet(impactAngle: impactAngle, impactVelocity: impactVelocity, surface: surface)
+        return RicochetEvaluation(willRicochet: res.willRicochet, residualVelocity: res.residualVelocity)
     }
 
     /**
@@ -107,6 +146,17 @@ public struct SafetyBallistics: Sendable {
         let soundSpeedFPS = atmosphere?.speedOfSound.converted(to: .feetPerSecond).value ?? Drag.defaultSpeedOfSoundFPS
         let envDragCoeff = atmosphere?.adjustCoefficient(dragCoefficient: dragCoefficient) ?? dragCoefficient
         let v0FPS = initialVelocity.converted(to: .feetPerSecond).value
+
+        // Guard against non-positive parameters preventing fictitious runaway acceleration
+        guard dragCoefficient > 0, envDragCoeff > 0, v0FPS > 0 else {
+            return MaximumRangeResult(
+                maximumRange: Measurement(value: 0, unit: .feet),
+                optimalLaunchAngle: Measurement(value: 0, unit: .degrees),
+                vertexAltitude: Measurement(value: 0, unit: .feet),
+                totalFlightTime: Measurement(value: 0, unit: .seconds),
+                terminalVelocity: Measurement(value: 0, unit: .feetPerSecond)
+            )
+        }
 
         // Coarse to fine search over launch angles from 25° to 45°
         var bestAngle = 33.0
@@ -162,7 +212,7 @@ public struct SafetyBallistics: Sendable {
         )
     }
 
-    private struct ArcResult {
+    private struct ArcResult: Sendable {
         var rangeFeet: Double
         var apogeeFeet: Double
         var flightTime: Double
@@ -201,6 +251,10 @@ public struct SafetyBallistics: Sendable {
             let ax = -aDrag * (vx / v)
             let ay = -g - aDrag * (vy / v)
 
+            let prevX = x
+            let prevY = y
+            let prevT = t
+
             x += vx * dt
             y += vy * dt
             vx += ax * dt
@@ -212,6 +266,10 @@ public struct SafetyBallistics: Sendable {
             }
 
             if y < 0.0 && t > 0.5 {
+                // Linear interpolation to ground impact (y = 0)
+                let frac = max(0.0, min(1.0, -prevY / max(1e-9, y - prevY)))
+                x = prevX + frac * (x - prevX)
+                t = prevT + frac * (t - prevT)
                 break
             }
         }

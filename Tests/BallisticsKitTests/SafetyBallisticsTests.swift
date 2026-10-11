@@ -31,7 +31,7 @@ struct SafetyBallisticsTests {
             impactVelocity: v0,
             surface: .water
         )
-        #expect(!steepRes.willRicochet)
+        #expect(steepRes.willRicochet == false)
         #expect(steepRes.residualVelocity.value == 0)
 
         // Hard ground with 8° angle -> should ricochet (crit is 15°)
@@ -42,6 +42,31 @@ struct SafetyBallisticsTests {
             surface: .hardGroundOrTurf
         )
         #expect(groundRes.willRicochet)
+    }
+
+    @Test
+    func testDetailedRicochetEvaluationAndGuards() throws {
+        let angle = Measurement(value: 5.0, unit: UnitAngle.degrees)
+        let v = Measurement(value: 2500, unit: UnitSpeed.feetPerSecond)
+        let detailed = SafetyBallistics.evaluateRicochetDetailed(impactAngle: angle, impactVelocity: v, surface: .hardGroundOrTurf)
+
+        #expect(detailed.willRicochet)
+        #expect(detailed.residualVelocity.converted(to: .feetPerSecond).value > 0)
+
+        // Codable test
+        let encoded = try JSONEncoder().encode(detailed)
+        let decoded = try JSONDecoder().decode(SafetyBallistics.RicochetEvaluation.self, from: encoded)
+        #expect(decoded == detailed)
+
+        // Negative angle guard
+        let negAngle = Measurement(value: -10.0, unit: UnitAngle.degrees)
+        let negRes = SafetyBallistics.evaluateRicochetDetailed(impactAngle: negAngle, impactVelocity: v, surface: .hardGroundOrTurf)
+        #expect(negRes.willRicochet == false)
+
+        // Zero velocity guard
+        let zeroV = Measurement(value: 0.0, unit: UnitSpeed.feetPerSecond)
+        let zeroVRes = SafetyBallistics.evaluateRicochetDetailed(impactAngle: angle, impactVelocity: zeroV, surface: .hardGroundOrTurf)
+        #expect(zeroVRes.willRicochet == false)
     }
 
     @Test

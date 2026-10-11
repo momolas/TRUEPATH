@@ -15,6 +15,28 @@ import Foundation
 /// - Lateral deflection: $\Delta \theta_{\text{wind}} = -\theta_{\text{drop}}\sin\phi + \theta_{\text{wind}}(\cos\phi - 1)$
 public struct RifleCant: Sendable, Equatable, Hashable {
 
+    /// Represents the angular trajectory error resulting from rifle cant.
+    public struct CantAngularError: Sendable, Equatable, Hashable, Codable {
+        public let elevationError: Measurement<UnitAngle>
+        public let windageError: Measurement<UnitAngle>
+
+        public init(elevationError: Measurement<UnitAngle>, windageError: Measurement<UnitAngle>) {
+            self.elevationError = elevationError
+            self.windageError = windageError
+        }
+    }
+
+    /// Represents the linear impact shift on target resulting from rifle cant.
+    public struct CantLinearShift: Sendable, Equatable, Hashable, Codable {
+        public let verticalShift: Measurement<UnitLength>
+        public let horizontalShift: Measurement<UnitLength>
+
+        public init(verticalShift: Measurement<UnitLength>, horizontalShift: Measurement<UnitLength>) {
+            self.verticalShift = verticalShift
+            self.horizontalShift = horizontalShift
+        }
+    }
+
     /**
      Calculates the angular error resulting from rifle cant.
 
@@ -53,6 +75,18 @@ public struct RifleCant: Sendable, Equatable, Hashable {
     }
 
     /**
+     Calculates the angular error resulting from rifle cant, returning a structured DTO.
+     */
+    public static func detailedAngularError(
+        dropCorrection: Measurement<UnitAngle>,
+        windageCorrection: Measurement<UnitAngle> = Measurement(value: 0, unit: .minutesOfAngle),
+        cantAngle: Measurement<UnitAngle>
+    ) -> CantAngularError {
+        let res = angularError(dropCorrection: dropCorrection, windageCorrection: windageCorrection, cantAngle: cantAngle)
+        return CantAngularError(elevationError: res.elevationError, windageError: res.windageError)
+    }
+
+    /**
      Calculates the linear impact point shift on the target due to rifle cant.
 
      - Parameters:
@@ -80,12 +114,30 @@ public struct RifleCant: Sendable, Equatable, Hashable {
         let elevRad = err.elevationError.converted(to: .radians).value
         let windRad = err.windageError.converted(to: .radians).value
 
-        let vertInches = (distFeet * tan(elevRad)) * 12.0
-        let horizInches = (distFeet * tan(windRad)) * 12.0
+        let vertInches = (abs(cos(elevRad)) > 1e-12) ? (distFeet * tan(elevRad)) * 12.0 : 0.0
+        let horizInches = (abs(cos(windRad)) > 1e-12) ? (distFeet * tan(windRad)) * 12.0 : 0.0
 
         return (
             verticalShift: Measurement(value: vertInches, unit: .inches),
             horizontalShift: Measurement(value: horizInches, unit: .inches)
         )
+    }
+
+    /**
+     Calculates the linear impact point shift on the target due to rifle cant, returning a structured DTO.
+     */
+    public static func detailedLinearImpactShift(
+        targetDistance: Measurement<UnitLength>,
+        dropCorrection: Measurement<UnitAngle>,
+        windageCorrection: Measurement<UnitAngle> = Measurement(value: 0, unit: .minutesOfAngle),
+        cantAngle: Measurement<UnitAngle>
+    ) -> CantLinearShift {
+        let res = linearImpactShift(
+            targetDistance: targetDistance,
+            dropCorrection: dropCorrection,
+            windageCorrection: windageCorrection,
+            cantAngle: cantAngle
+        )
+        return CantLinearShift(verticalShift: res.verticalShift, horizontalShift: res.horizontalShift)
     }
 }

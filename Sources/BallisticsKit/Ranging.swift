@@ -29,7 +29,7 @@ public struct Ranging: Sendable, Equatable, Hashable {
         let sizeMeters = targetSize.converted(to: .meters).value
         let angleRad = angularSize.converted(to: .radians).value
 
-        guard sizeMeters > 0, angleRad > 0 else {
+        guard sizeMeters > 0, angleRad > 0, angleRad < (Double.pi / 2.0) else {
             return Measurement(value: 0, unit: .meters)
         }
 
@@ -83,7 +83,7 @@ public struct Ranging: Sendable, Equatable, Hashable {
         let distMeters = distance.converted(to: .meters).value
         let angleRad = angularSize.converted(to: .radians).value
 
-        guard distMeters > 0, angleRad > 0 else {
+        guard distMeters > 0, angleRad > 0, angleRad < (Double.pi / 2.0) else {
             return Measurement(value: 0, unit: .meters)
         }
 

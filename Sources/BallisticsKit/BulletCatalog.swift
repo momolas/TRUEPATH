@@ -8,7 +8,12 @@
 import Foundation
 
 /// Defines complete physical and aerodynamic specifications for a certified commercial match bullet.
-public struct BulletProfile: Sendable, Equatable, Hashable, Codable {
+public struct BulletProfile: Sendable, Equatable, Hashable, Codable, Identifiable {
+    /// Canonical deterministic identifier for SwiftData #Unique and SwiftUI diffing.
+    public var id: String {
+        "\(manufacturer):\(caliber):\(name)".replacing(" ", with: "_").lowercased()
+    }
+
     /// Commercial product designation (e.g. "Sierra MatchKing 175gr").
     public let name: String
 
@@ -60,6 +65,23 @@ public struct BulletProfile: Sendable, Equatable, Hashable, Codable {
             diameter: diameter,
             length: length
         )
+    }
+
+    // MARK: - SwiftData Primitive Mapping Accessors
+
+    /// Primitive weight in grains for SwiftData column storage, indexing, and #Predicate filtering.
+    public var weightGrains: Double {
+        weight.converted(to: .grains).value
+    }
+
+    /// Primitive diameter in inches for SwiftData column storage, indexing, and #Predicate filtering.
+    public var diameterInches: Double {
+        diameter.converted(to: .inches).value
+    }
+
+    /// Primitive length in inches for SwiftData column storage and filtering.
+    public var lengthInches: Double {
+        length.converted(to: .inches).value
     }
 }
 

@@ -8,7 +8,7 @@
 import Foundation
 
 /// Represents standard optic turret adjustment click increments.
-public enum TurretClick: Sendable, Equatable, Hashable {
+public enum TurretClick: Sendable, Equatable, Hashable, Codable {
     /// 1/4 MOA per click (0.25 Minutes of Angle, ~0.26 inch @ 100 yards).
     case oneFourthMOA
 
@@ -55,6 +55,8 @@ public enum TurretClick: Sendable, Equatable, Hashable {
         let clickRad = angleValue.converted(to: .radians).value
         guard clickRad > 0 else { return 0 }
         let correctionRad = correction.converted(to: .radians).value
-        return Int((correctionRad / clickRad).rounded())
+        let rawClicks = (correctionRad / clickRad).rounded()
+        guard rawClicks.isFinite, abs(rawClicks) <= Double(Int.max) else { return 0 }
+        return Int(rawClicks)
     }
 }

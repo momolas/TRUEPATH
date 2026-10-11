@@ -11,7 +11,7 @@ import Accelerate
 #endif
 
 /// Configuration for stochastic dispersion in Monte Carlo ballistics simulations.
-public struct MonteCarloDispersion: Sendable, Equatable {
+public struct MonteCarloDispersion: Sendable, Equatable, Hashable, Codable {
     /// Standard deviation of muzzle velocity (e.g. 10 to 20 ft/s for match ammo).
     public var muzzleVelocitySD: Measurement<UnitSpeed>
 
@@ -33,7 +33,10 @@ public struct MonteCarloDispersion: Sendable, Equatable {
 }
 
 /// A single shot result in a Monte Carlo batch simulation.
-public struct MonteCarloShot: Sendable, Equatable {
+public struct MonteCarloShot: Sendable, Equatable, Hashable, Identifiable, Codable {
+    /// Unique identifier for SwiftUI List and Swift Charts rendering.
+    public let id: UUID
+
     /// Horizontal impact deviation from aim point (positive = right, negative = left).
     public var horizontalDeviation: Measurement<UnitLength>
 
@@ -53,6 +56,7 @@ public struct MonteCarloShot: Sendable, Equatable {
     public var timeOfFlight: Measurement<UnitDuration>
 
     public init(
+        id: UUID = UUID(),
         horizontalDeviation: Measurement<UnitLength>,
         verticalDeviation: Measurement<UnitLength>,
         radialDistance: Measurement<UnitLength>,
@@ -60,6 +64,7 @@ public struct MonteCarloShot: Sendable, Equatable {
         terminalEnergy: Measurement<UnitEnergy>,
         timeOfFlight: Measurement<UnitDuration>
     ) {
+        self.id = id
         self.horizontalDeviation = horizontalDeviation
         self.verticalDeviation = verticalDeviation
         self.radialDistance = radialDistance
@@ -70,7 +75,7 @@ public struct MonteCarloShot: Sendable, Equatable {
 }
 
 /// Aggregated statistical summary of a Monte Carlo shot series, computed via Apple Accelerate (vDSP).
-public struct MonteCarloResult: Sendable, Equatable {
+public struct MonteCarloResult: Sendable, Equatable, Hashable, Codable {
     /// Total number of shots simulated.
     public var sampleCount: Int
 
@@ -301,11 +306,12 @@ public struct MonteCarlo: Sendable {
             remaining -= count
         }
 
-        let combinedOutput: BatchOutput = await withTaskGroup(of: BatchOutput.self) { group in
+        let combinedOutput: BatchOutput = await withTaskGroup(of: (Int, BatchOutput)?.self) { group in
             for (idx, count) in chunks.enumerated() {
+                guard !Task.isCancelled else { break }
                 let chunkSeed = baseSeed &+ (UInt64(idx) &* 0x9E3779B97F4A7C15)
-                group.addTask {
-                    runBatch(
+                let added = group.addTaskUnlessCancelled {
+                    let batch = runBatch(
                         count: count,
                         seed: chunkSeed,
                         nominalV0: nominalV0,
@@ -325,8 +331,18 @@ public struct MonteCarlo: Sendable {
                         weight: weight,
                         atmosphere: atmosphere
                     )
+                    return (idx, batch)
+                }
+                guard added else { break }
+            }
+
+            var indexedBatches = [(Int, BatchOutput)]()
+            for await item in group {
+                if let item {
+                    indexedBatches.append(item)
                 }
             }
+            indexedBatches.sort { $0.0 < $1.0 }
 
             var allShots = [MonteCarloShot]()
             var allX = [Double]()
@@ -335,7 +351,7 @@ public struct MonteCarlo: Sendable {
             var allV = [Double]()
             var allE = [Double]()
 
-            for await batch in group {
+            for (_, batch) in indexedBatches {
                 allShots.append(contentsOf: batch.shots)
                 allX.append(contentsOf: batch.xDeviations)
                 allY.append(contentsOf: batch.yDeviations)
@@ -403,6 +419,7 @@ public struct MonteCarlo: Sendable {
         shotList.reserveCapacity(count)
 
         for _ in 0..<count {
+            guard !Task.isCancelled else { break }
             let (g1, g2) = rng.nextGaussianPair()
             let (g3, g4) = rng.nextGaussianPair()
 
@@ -481,6 +498,25 @@ public struct MonteCarlo: Sendable {
     }
 
     private static func computeResult(output: BatchOutput, targetDistance: Measurement<UnitLength>) -> MonteCarloResult {
+        guard !output.shots.isEmpty else {
+            return MonteCarloResult(
+                sampleCount: 0,
+                targetDistance: targetDistance,
+                meanHorizontalDeviation: Measurement(value: 0, unit: .inches),
+                meanVerticalDeviation: Measurement(value: 0, unit: .inches),
+                horizontalSD: Measurement(value: 0, unit: .inches),
+                verticalSD: Measurement(value: 0, unit: .inches),
+                extremeSpreadHorizontal: Measurement(value: 0, unit: .inches),
+                extremeSpreadVertical: Measurement(value: 0, unit: .inches),
+                cep50: Measurement(value: 0, unit: .inches),
+                r95: Measurement(value: 0, unit: .inches),
+                meanTerminalVelocity: Measurement(value: 0, unit: .feetPerSecond),
+                terminalVelocitySD: Measurement(value: 0, unit: .feetPerSecond),
+                meanTerminalEnergy: Measurement(value: 0, unit: .footPounds),
+                shots: []
+            )
+        }
+
         let xDeviations = output.xDeviations
         let yDeviations = output.yDeviations
         let velocities = output.velocities
@@ -559,7 +595,7 @@ public struct MonteCarlo: Sendable {
 }
 
 // MARK: - Pseudo-Random Gaussian Generator
-private struct CustomRNG {
+private struct CustomRNG: Sendable {
     private var state: UInt64
 
     init(seed: UInt64) {

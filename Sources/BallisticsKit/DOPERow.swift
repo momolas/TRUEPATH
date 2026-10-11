@@ -9,7 +9,12 @@ import Foundation
 
 /// Represents a structured row in a DOPE (Data On Previous Engagements) ballistic table,
 /// exposing symmetric MRAD (0.1 MIL) and MOA (1/4 & 1/8 MOA) adjustments for both elevation and windage.
-public struct DOPERow: Sendable, Equatable, Hashable {
+public struct DOPERow: Sendable, Equatable, Hashable, Codable, Identifiable {
+
+    /// Monotonic metric identifier for SwiftUI Table and List diffing.
+    public var id: Double {
+        range.converted(to: .meters).value
+    }
 
     /// Target range.
     public let range: Measurement<UnitLength>

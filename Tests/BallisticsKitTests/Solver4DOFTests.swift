@@ -52,7 +52,7 @@ import Testing
         maxRange: Measurement(value: 1000, unit: .yards)
     )
 
-    #expect(!solution4DOF.distances.isEmpty)
+    #expect(solution4DOF.distances.isEmpty == false)
 
     let point0 = try #require(solution4DOF.getPoint(at: Measurement(value: 0, unit: .yards)))
     let point100 = try #require(solution4DOF.getPoint(at: Measurement(value: 100, unit: .yards)))
@@ -177,7 +177,7 @@ import Testing
         distanceStep: Measurement(value: 100, unit: .yards)
     )
 
-    #expect(!solution4DOF.distances.isEmpty)
+    #expect(solution4DOF.distances.isEmpty == false)
 
     let point0 = try #require(solution4DOF.getPoint(at: Measurement(value: 0, unit: .yards)))
     let point500 = try #require(solution4DOF.getPoint(at: Measurement(value: 500, unit: .yards)))

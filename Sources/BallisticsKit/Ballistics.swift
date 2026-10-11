@@ -31,32 +31,6 @@ public struct Ballistics: Sendable, Equatable, Hashable {
     }
 
     /**
-     Solves the projectile trajectory using the 3-DOF point-mass solver.
-
-     - Parameters:
-       - preferredDistanceUnit: The preferred distance unit, used for sampling (e.g., .yards or .meters). Default is .yards.
-       - dragFunction: The aerodynamic drag function (.g1, .g2, .g5, .g6, .g7, .g8). Default is .g1.
-       - dragCoefficient: The drag coefficient of the projectile.
-       - initialVelocity: The muzzle velocity of the projectile.
-       - sightHeight: The height of the sight above the bore axis.
-       - shootingAngle: The actual angle of elevation at which the projectile is fired. Positive is up, negative is down.
-       - zeroRange: The distance the projectile is zeroed at.
-       - atmosphere: The atmospheric conditions to consider (temperature, pressure, altitude, humidity). Optional.
-       - windSpeed: The speed of the wind.
-       - windAngle: The direction of the wind relative to the projectile's path, in degrees (0° = headwind, 90° = left to right).
-       - weight: The projectile weight.
-       - distanceStep: The sampling step in the preferred unit. Default is 1 yard.
-       - twist: Barrel rifling twist rate (e.g. 1 turn in 10 inches). Optional.
-       - twistDirection: Barrel rifling twist direction (.right or .left). Default is .right.
-       - bulletDiameter: Projectile caliber/diameter. Optional, used for Miller stability factor.
-       - bulletLength: Projectile length. Optional, used for Miller stability factor.
-       - latitude: Firing position latitude. Optional, used for Coriolis deflections.
-       - azimuth: Shooting compass azimuth. Optional, used for Coriolis deflections.
-
-     - Returns:
-       A ballistics object containing trajectory points sampled at regular distance steps with continuous query capability.
-    */
-    /**
      Solves the projectile trajectory using the unified NATO STANAG 4355 Modified Point Mass (4-DOF) solver.
 
      - Parameters:
@@ -339,15 +313,16 @@ public struct Ballistics: Sendable, Equatable, Hashable {
             let base = Int(idx)
             let frac = idx - Double(base)
             if base >= distances.count - 1 {
-                interpDrops[i] = dropsTable.last!
-                interpDropCorrs[i] = dropCorrTable.last!
-                interpWindages[i] = windageTable.last!
-                interpWindageCorrs[i] = windageCorrTable.last!
-                interpTimes[i] = timeTable.last!
-                interpVs[i] = vTable.last!
-                interpVxs[i] = vxTable.last!
-                interpVys[i] = vyTable.last!
-                interpEnergies[i] = energyTable.last!
+                let lastIdx = distances.count - 1
+                interpDrops[i] = dropsTable[lastIdx]
+                interpDropCorrs[i] = dropCorrTable[lastIdx]
+                interpWindages[i] = windageTable[lastIdx]
+                interpWindageCorrs[i] = windageCorrTable[lastIdx]
+                interpTimes[i] = timeTable[lastIdx]
+                interpVs[i] = vTable[lastIdx]
+                interpVxs[i] = vxTable[lastIdx]
+                interpVys[i] = vyTable[lastIdx]
+                interpEnergies[i] = energyTable[lastIdx]
             } else {
                 interpDrops[i] = dropsTable[base] + frac * (dropsTable[base + 1] - dropsTable[base])
                 interpDropCorrs[i] = dropCorrTable[base] + frac * (dropCorrTable[base + 1] - dropCorrTable[base])
@@ -599,6 +574,42 @@ public struct Ballistics: Sendable, Equatable, Hashable {
         #else
         return distances.map { $0.dopeRow(speedOfSound: speedOfSound) }
         #endif
+    }
+
+    /**
+     Generates a sampled DOPE table at regular range intervals up to an optional maximum range.
+     Avoids memory ballooning when displaying DOPE cards in SwiftUI lists or charts.
+
+     - Parameters:
+       - interval: Range spacing between successive rows (e.g., 50 yards, 100 meters).
+       - maxRange: Maximum downrange distance limit (optional; defaults to the end of the trajectory).
+       - speedOfSound: Ambient speed of sound for Mach calculations.
+     - Returns: Array of interpolated `DOPERow` structures at each interval.
+     */
+    public func dopeTable(
+        every interval: Measurement<UnitLength>,
+        upTo maxRange: Measurement<UnitLength>? = nil,
+        speedOfSound: Measurement<UnitSpeed> = Measurement(value: 1116.45, unit: .feetPerSecond)
+    ) -> [DOPERow] {
+        guard let first = distances.first, let last = distances.last else { return [] }
+        let stepMeters = interval.converted(to: .meters).value
+        guard stepMeters > 0 else { return [] }
+
+        let startMeters = first.range.converted(to: .meters).value
+        let trajMaxMeters = last.range.converted(to: .meters).value
+        let requestedMaxMeters = maxRange?.converted(to: .meters).value ?? trajMaxMeters
+        let endMeters = min(trajMaxMeters, requestedMaxMeters)
+        guard endMeters >= startMeters else { return [] }
+
+        var sampleDistances = [Measurement<UnitLength>]()
+        var currentMeters = startMeters
+        while currentMeters <= endMeters + (stepMeters * 1e-6) {
+            sampleDistances.append(Measurement(value: currentMeters, unit: .meters).converted(to: preferredDistanceUnit))
+            currentMeters += stepMeters
+        }
+
+        let sampledPoints = getPoints(at: sampleDistances)
+        return sampledPoints.map { $0.dopeRow(speedOfSound: speedOfSound) }
     }
 
     /**

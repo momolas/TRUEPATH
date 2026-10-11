@@ -40,7 +40,7 @@ struct TerminalBallisticsTests {
         let vSubsonic = Measurement(value: 1050, unit: UnitSpeed.feetPerSecond)
 
         #expect(TerminalBallistics.isAboveExpansionThreshold(impactVelocity: vSupersonic))
-        #expect(!TerminalBallistics.isAboveExpansionThreshold(impactVelocity: vSubsonic))
+        #expect(TerminalBallistics.isAboveExpansionThreshold(impactVelocity: vSubsonic) == false)
     }
 
     @Test

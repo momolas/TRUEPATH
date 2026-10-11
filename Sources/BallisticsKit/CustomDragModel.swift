@@ -32,13 +32,13 @@ public struct CustomDragModel: Sendable, Equatable, Hashable, Codable {
      Interpolates the drag coefficient (Cd) for a given Mach number.
      */
     public func dragCoefficient(atMach mach: Double) -> Double {
-        guard !dataPoints.isEmpty else { return 0.3 }
+        guard let first = dataPoints.first, let last = dataPoints.last else { return 0.3 }
 
-        if mach <= dataPoints.first!.mach {
-            return dataPoints.first!.cd
+        if mach <= first.mach {
+            return first.cd
         }
-        if mach >= dataPoints.last!.mach {
-            return dataPoints.last!.cd
+        if mach >= last.mach {
+            return last.cd
         }
 
         for i in 0..<(dataPoints.count - 1) {
@@ -50,7 +50,7 @@ public struct CustomDragModel: Sendable, Equatable, Hashable, Codable {
             }
         }
 
-        return dataPoints.last!.cd
+        return last.cd
     }
 
     /**

@@ -110,8 +110,8 @@ import Testing
         energy: Measurement(value: 2000, unit: .footPounds)
     )
     #expect(pointSuper.isSupersonic())
-    #expect(!pointSuper.isTransonic())
-    #expect(!pointSuper.isSubsonic())
+    #expect(pointSuper.isTransonic() == false)
+    #expect(pointSuper.isSubsonic() == false)
 
     let pointTrans = Point(
         range: Measurement(value: 800, unit: .yards),
@@ -125,7 +125,7 @@ import Testing
         velocityY: Measurement(value: -100, unit: .feetPerSecond),
         energy: Measurement(value: 500, unit: .footPounds)
     )
-    #expect(!pointTrans.isSupersonic())
+    #expect(pointTrans.isSupersonic() == false)
     #expect(pointTrans.isTransonic())
-    #expect(!pointTrans.isSubsonic())
+    #expect(pointTrans.isSubsonic() == false)
 }

@@ -90,4 +90,30 @@ struct RifleCantTests {
         #expect(linErr.verticalShift.value < 0)
         #expect(linErr.horizontalShift.value < 0)
     }
+
+    @Test
+    func testDetailedCantErrorAndCodable() throws {
+        let dist = Measurement(value: 500, unit: UnitLength.yards)
+        let drop = Measurement(value: 12.0, unit: UnitAngle.minutesOfAngle)
+        let wind = Measurement(value: 0.0, unit: UnitAngle.minutesOfAngle)
+        let cant = Measurement(value: 4.0, unit: UnitAngle.degrees)
+
+        let detailedAng = RifleCant.detailedAngularError(dropCorrection: drop, windageCorrection: wind, cantAngle: cant)
+        let detailedLin = RifleCant.detailedLinearImpactShift(targetDistance: dist, dropCorrection: drop, windageCorrection: wind, cantAngle: cant)
+
+        #expect(detailedAng.elevationError.value < 0)
+        #expect(detailedLin.verticalShift.value < 0)
+
+        // Codable test
+        let encoder = JSONEncoder()
+        let decoder = JSONDecoder()
+
+        let angData = try encoder.encode(detailedAng)
+        let decodedAng = try decoder.decode(RifleCant.CantAngularError.self, from: angData)
+        #expect(decodedAng == detailedAng)
+
+        let linData = try encoder.encode(detailedLin)
+        let decodedLin = try decoder.decode(RifleCant.CantLinearShift.self, from: linData)
+        #expect(decodedLin == detailedLin)
+    }
 }

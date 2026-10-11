@@ -11,7 +11,12 @@ import Foundation
 ///
 /// This struct captures various ballistic data at a given range, including position, velocity, energy, timing,
 /// advanced long-range effects (spin drift, Coriolis deflections), 6-DOF dynamic metrics, and optical turret click helpers.
-public struct Point: Sendable, Equatable, Hashable {
+public struct Point: Sendable, Equatable, Hashable, Codable, Identifiable {
+
+    /// Monotonic metric identifier for SwiftUI Lists and Charts diffing.
+    public var id: Double {
+        range.converted(to: .meters).value
+    }
 
     /// The distance from the muzzle to this point.
     public let range: Measurement<UnitLength>

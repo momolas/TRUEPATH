@@ -27,7 +27,7 @@ import BallisticsKit
             distanceStep: Measurement(value: 50, unit: .yards)
         )
 
-        #expect(!solution.distances.isEmpty)
+        #expect(solution.distances.isEmpty == false)
         let point100 = try #require(solution.getPoint(at: Measurement(value: 100, unit: .yards)))
         let point500 = try #require(solution.getPoint(at: Measurement(value: 500, unit: .yards)))
 

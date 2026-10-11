@@ -8,7 +8,7 @@
 import Foundation
 
 /// Represents the physical and geometric rigid-body properties of a bullet for 6-DOF simulations.
-public struct ProjectileProperties: Sendable, Equatable, Hashable {
+public struct ProjectileProperties: Sendable, Equatable, Hashable, Codable {
 
     /// The bullet mass (weight).
     public let weight: Measurement<UnitMass>

@@ -108,7 +108,7 @@ struct AdvancedBallisticsExtensionsTests {
     }
 
     @Test
-    func testDynamicWindProfileInSolver4DOF() {
+    func testDynamicWindProfileInSolver4DOF() throws {
         let v0 = Measurement(value: 2750, unit: UnitSpeed.feetPerSecond)
         let zero = Measurement(value: 100, unit: UnitLength.yards)
         let sightH = Measurement(value: 1.5, unit: UnitLength.inches)
@@ -146,17 +146,12 @@ struct AdvancedBallisticsExtensionsTests {
             maxRange: Measurement(value: 650, unit: .yards)
         )
 
-        let ptGradient = solGradient.getPoint(at: Measurement(value: 600, unit: .yards))
-        let ptCalm = solCalm.getPoint(at: Measurement(value: 600, unit: .yards))
+        let ptG = try #require(solGradient.getPoint(at: Measurement(value: 600, unit: .yards)))
+        let ptC = try #require(solCalm.getPoint(at: Measurement(value: 600, unit: .yards)))
 
-        #expect(ptGradient != nil)
-        #expect(ptCalm != nil)
-
-        if let ptG = ptGradient, let ptC = ptCalm {
-            // Windage under shear must be distinctly non-zero (> 5.0 inches), while calm windage is near zero (< 1.0 inch)
-            #expect(abs(ptG.windage.converted(to: .inches).value) > 5.0)
-            #expect(abs(ptC.windage.converted(to: .inches).value) < 1.0)
-        }
+        // Windage under shear must be distinctly non-zero (> 5.0 inches), while calm windage is near zero (< 1.0 inch)
+        #expect(abs(ptG.windage.converted(to: .inches).value) > 5.0)
+        #expect(abs(ptC.windage.converted(to: .inches).value) < 1.0)
     }
 }
 

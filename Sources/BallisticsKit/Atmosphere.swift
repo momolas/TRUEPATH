@@ -7,7 +7,7 @@
 
 import Foundation
 
-public struct Atmosphere: Sendable, Equatable, Hashable {
+public struct Atmosphere: Sendable, Equatable, Hashable, Codable {
 
     public let altitude: Measurement<UnitLength>
     public let pressure: Measurement<UnitPressure>
@@ -70,7 +70,9 @@ public struct Atmosphere: Sendable, Equatable, Hashable {
     // Drag coefficient atmospheric corrections
     private func calcFR(temperature: Double, pressure: Double, relativeHumidity: Double) -> Double {
         let vpw = 4e-6 * pow(temperature, 3) - 0.0004 * pow(temperature, 2) + 0.0234 * temperature - 0.2517
-        let frh = 0.995 * (pressure / (pressure - (0.3783 * relativeHumidity * vpw)))
+        let pSafe = max(1e-4, pressure)
+        let denom = pSafe - (0.3783 * relativeHumidity * vpw)
+        let frh = 0.995 * (pSafe / (abs(denom) > 1e-6 ? denom : 1e-6))
         return frh
     }
 
@@ -171,8 +173,8 @@ public struct Atmosphere: Sendable, Equatable, Hashable {
         relativeHumidity: Double = 0.5
     ) -> Atmosphere {
         let daFeet = densityAltitude.converted(to: .feet).value
-        // In standard ISA, temperature at DA: T = 59°F - 0.00356616 * DA
-        let tempF = 59.0 - 0.00356616 * daFeet
+        // In standard ISA, temperature at DA: T = 59°F - 0.00356616 * DA (guarded against sub-absolute zero)
+        let tempF = max(-459.67, 59.0 - 0.00356616 * daFeet)
         // Standard ISA pressure: P = 29.921 * (1 - 0.00356616 * DA / 518.67)^5.25588
         let term = max(1e-4, 1.0 - (0.00356616 * daFeet) / 518.67)
         let pInHg = 29.921 * pow(term, 5.25588)
@@ -198,6 +200,23 @@ public struct Atmosphere: Sendable, Equatable, Hashable {
             temperature: temperature,
             relativeHumidity: relativeHumidity
         )
+    }
+
+    // MARK: - SwiftData Primitive Mapping Accessors
+
+    /// Primitive temperature in Celsius for SwiftData predicate filtering and indexing.
+    public var temperatureCelsius: Double {
+        temperature.converted(to: .celsius).value
+    }
+
+    /// Primitive pressure in inches of mercury for SwiftData column storage.
+    public var pressureInHg: Double {
+        pressure.converted(to: .inchesOfMercury).value
+    }
+
+    /// Primitive altitude in meters for SwiftData storage and indexing.
+    public var altitudeMeters: Double {
+        altitude.converted(to: .meters).value
     }
 }
 

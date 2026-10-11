@@ -8,7 +8,7 @@
 import Foundation
 
 /// Defines wind conditions along a trajectory, supporting constant wind, vertical boundary layer gradients, and range-segmented wind zones.
-public enum WindProfile: Sendable, Equatable {
+public enum WindProfile: Sendable, Equatable, Hashable, Codable {
 
     /// Constant uniform wind along the entire trajectory.
     case constant(speed: Measurement<UnitSpeed>, angle: Double)
@@ -32,7 +32,7 @@ public enum WindProfile: Sendable, Equatable {
     case segmented(zones: [WindZone])
 
     /// A specific downrange wind zone.
-    public struct WindZone: Sendable, Equatable {
+    public struct WindZone: Sendable, Equatable, Hashable, Codable {
         /// The starting downrange distance of this wind zone (inclusive).
         public var startRange: Measurement<UnitLength>
 
@@ -99,11 +99,15 @@ public enum WindProfile: Sendable, Equatable {
                 }
             }
 
-            // Default to last zone if past defined zones, or first if before
-            if rangeMeters >= zones.last!.endRange.converted(to: .meters).value {
-                return (zones.last!.speed, zones.last!.angle)
+            guard let firstZone = zones.first, let lastZone = zones.last else {
+                return (Measurement(value: 0, unit: .milesPerHour), 0)
             }
-            return (zones.first!.speed, zones.first!.angle)
+
+            // Default to last zone if past defined zones, or first if before
+            if rangeMeters >= lastZone.endRange.converted(to: .meters).value {
+                return (lastZone.speed, lastZone.angle)
+            }
+            return (firstZone.speed, firstZone.angle)
         }
     }
 }

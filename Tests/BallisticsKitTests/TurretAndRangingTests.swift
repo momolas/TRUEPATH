@@ -62,7 +62,7 @@ import Testing
     #expect(abs(size.converted(to: .meters).value - 0.8) < 0.01)
 }
 
-@Test func dopeTableSymmetricClicks() {
+@Test func dopeTableSymmetricClicks() throws {
     let solution = Ballistics.solve(
         dragCoefficient: 0.450,
         initialVelocity: Measurement(value: 2700, unit: .feetPerSecond),
@@ -75,13 +75,10 @@ import Testing
     )
 
     let table = solution.dopeTable()
-    #expect(!table.isEmpty)
+    #expect(table.isEmpty == false)
 
     // Inspect row at 500 yards
-    guard let row500 = solution.dopeRow(at: Measurement(value: 500, unit: .yards)) else {
-        #expect(Bool(false), "DOPE row at 500 yards must exist")
-        return
-    }
+    let row500 = try #require(solution.dopeRow(at: Measurement(value: 500, unit: .yards)))
 
     #expect(row500.elevationMOA > 5.0)
     #expect(row500.elevationMRAD > 1.5)
@@ -97,5 +94,62 @@ import Testing
 
     #expect(row500.mach > 1.0)
     #expect(row500.isSupersonic || row500.isTransonic)
+}
+
+@Test func dopeTableIntervalSampling() {
+    let solution = Ballistics.solve(
+        dragCoefficient: 0.450,
+        initialVelocity: Measurement(value: 2700, unit: .feetPerSecond),
+        sightHeight: Measurement(value: 1.5, unit: .inches),
+        zeroRange: Measurement(value: 100, unit: .yards),
+        distanceStep: Measurement(value: 1, unit: .yards),
+        maxRange: Measurement(value: 1000, unit: .yards)
+    )
+
+    // Generate DOPE table spaced every 50 yards up to 500 yards
+    let sampledDOPE = solution.dopeTable(
+        every: Measurement(value: 50, unit: .yards),
+        upTo: Measurement(value: 500, unit: .yards)
+    )
+
+    #expect(sampledDOPE.count == 11) // 0, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500
+    let firstRow = sampledDOPE.first
+    let lastRow = sampledDOPE.last
+    #expect(abs((firstRow?.range.converted(to: .yards).value ?? -1) - 0.0) < 1e-6)
+    #expect(abs((lastRow?.range.converted(to: .yards).value ?? -1) - 500.0) < 1e-6)
+}
+
+@Test func turretClickOverflowAndCodable() throws {
+    let turret = TurretClick.pointOneMRAD
+    let normalAngle = Measurement(value: 1.0, unit: UnitAngle.milliradians)
+    #expect(turret.clicks(for: normalAngle) == 10)
+
+    // Infinite and NaN guards
+    let infAngle = Measurement(value: Double.infinity, unit: UnitAngle.degrees)
+    #expect(turret.clicks(for: infAngle) == 0)
+
+    let nanAngle = Measurement(value: Double.nan, unit: UnitAngle.degrees)
+    #expect(turret.clicks(for: nanAngle) == 0)
+
+    // Codable verification
+    let encoder = JSONEncoder()
+    let decoder = JSONDecoder()
+    let encoded = try encoder.encode(turret)
+    let decoded = try decoder.decode(TurretClick.self, from: encoded)
+    #expect(decoded == turret)
+}
+
+@Test func rangingBoundaryGuards() {
+    let validSize = Measurement(value: 1.0, unit: UnitLength.meters)
+    let validDist = Measurement(value: 500.0, unit: UnitLength.meters)
+
+    // Negative angle or angle >= 90 degrees
+    let negAngle = Measurement(value: -1.0, unit: UnitAngle.degrees)
+    let excessiveAngle = Measurement(value: 95.0, unit: UnitAngle.degrees)
+
+    #expect(Ranging.distance(targetSize: validSize, angularSize: negAngle).value == 0)
+    #expect(Ranging.distance(targetSize: validSize, angularSize: excessiveAngle).value == 0)
+    #expect(Ranging.targetSize(distance: validDist, angularSize: negAngle).value == 0)
+    #expect(Ranging.targetSize(distance: validDist, angularSize: excessiveAngle).value == 0)
 }
 

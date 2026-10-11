@@ -87,8 +87,11 @@ public struct AcceleratedDragTable: Sendable, Equatable {
 
         // Vectorized: indices = clamp((machArray - minMach) * invStep, 0.0, maxIndex)
         vDSP_vsaddD(machArray, 1, &shift, &indices, 1, vDSP_Length(count))
-        vDSP_vsmulD(indices, 1, &scale, &indices, 1, vDSP_Length(count))
-        vDSP_vclipD(indices, 1, &lowLimit, &highLimit, &indices, 1, vDSP_Length(count))
+        indices.withUnsafeMutableBufferPointer { ptr in
+            guard let base = ptr.baseAddress else { return }
+            vDSP_vsmulD(base, 1, &scale, base, 1, vDSP_Length(count))
+            vDSP_vclipD(base, 1, &lowLimit, &highLimit, base, 1, vDSP_Length(count))
+        }
 
         vDSP_vlintD(
             grid,
@@ -106,8 +109,9 @@ public struct AcceleratedDragTable: Sendable, Equatable {
             indices[i] = min(maxIndex, max(0.0, rawIdx))
             let idx = indices[i]
             let base = Int(idx)
-            if base >= grid.count - 1 {
-                results[i] = grid.last!
+            let lastIdx = grid.count - 1
+            if base >= lastIdx {
+                results[i] = grid[lastIdx]
             } else {
                 let frac = idx - Double(base)
                 results[i] = grid[base] + frac * (grid[base + 1] - grid[base])
@@ -126,8 +130,9 @@ public struct AcceleratedDragTable: Sendable, Equatable {
         let maxIndex = Double(grid.count - 1)
         let clampedIdx = min(maxIndex, max(0.0, rawIdx))
         let base = Int(clampedIdx)
-        if base >= grid.count - 1 {
-            return grid.last!
+        let lastIdx = grid.count - 1
+        if base >= lastIdx {
+            return grid[lastIdx]
         }
         let frac = clampedIdx - Double(base)
         return grid[base] + frac * (grid[base + 1] - grid[base])
@@ -135,8 +140,9 @@ public struct AcceleratedDragTable: Sendable, Equatable {
 
     // Helper for initial resampling
     private static func scalarInterpolate(points: [(mach: Double, cd: Double)], mach: Double) -> Double {
-        if mach <= points.first!.mach { return points.first!.cd }
-        if mach >= points.last!.mach { return points.last!.cd }
+        guard let first = points.first, let last = points.last else { return 0.3 }
+        if mach <= first.mach { return first.cd }
+        if mach >= last.mach { return last.cd }
 
         for i in 0..<(points.count - 1) {
             let p0 = points[i]
@@ -146,7 +152,7 @@ public struct AcceleratedDragTable: Sendable, Equatable {
                 return p0.cd + factor * (p1.cd - p0.cd)
             }
         }
-        return points.last!.cd
+        return last.cd
     }
 }
 
